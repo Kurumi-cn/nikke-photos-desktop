@@ -3,6 +3,7 @@ import { startStrategyTask } from './client.js'
 import { STRATEGIES } from './engine.js'
 import { STAT_NAMES } from '../calculator/engine.js'
 import { CHARACTER_NOTE } from './character.js'
+import { describeGearGoals } from './character-goal-view.js'
 import './ui.css'
 
 const STORAGE_KEY = 'nikke-tools:workshop:strategy-compare:v1'
@@ -133,8 +134,17 @@ export function installStrategyUI(api) {
     result.innerHTML=`<h3>当前盘面 · 剩余资源期望</h3><p class="strategy-note">${escape(settingsText(value.settings))}</p><div class="resource-table-wrap"><table class="resource-table"><thead><tr><th>模型 / 策略</th><th>预期洗练石</th><th>预期秘钥</th><th>下一步操作</th></tr></thead><tbody>${rows.map(r=>`<tr><th>${escape(r[0])}</th><td>${number(r[1])}</td><td>${number(r[2])}</td><td>${escape(r[3])}</td></tr>`).join('')}</tbody></table></div><p class="strategy-note">不同模型单列，不把跨模型差异归因于秘钥，不合并石头与秘钥为总分。每执行一次后按实际盘面重新计算。</p>`
     result.hidden=false
   }
-  function renderCharacter(value) {
-    result.innerHTML=`<h3>四装备 · 剩余资源期望（近似）</h3><p class="strategy-note">${escape(value.note)}</p><p class="strategy-note">允许使用自订秘钥 · zbx ${escape(value.settings.zbxRule)}；p=${value.settings.p}；${value.settings.characterTargets.map(t=>escape(t.stat)+' 总档位≥'+t.totalTier).join('、')}</p><div class="resource-table-wrap"><table class="resource-table"><thead><tr><th>模型 / 策略</th><th>预期洗练石</th><th>预期秘钥</th></tr></thead><tbody><tr><th>zbx 同模型全石头（近似）</th><td>${number(value.expected.stoneOnly)}</td><td>0</td></tr><tr><th>允许使用自订秘钥（近似）</th><td>${number(value.expected.withKeysStone)}</td><td>${number(value.expected.withKeysKeys)}</td></tr></tbody></table></div>${value.gears.map(g=>`<p><b>装备 ${g.gear}：</b>${escape(g.nextAction)}<br><span class="strategy-note">算法分配子目标：${escape(g.subTargets || '无需承担新目标')}</span></p>`).join('')}<p class="strategy-note">每执行一次后按实际四件盘面重新计算。结果只保留于本工具，不写角色档案；两种资源分别展示。</p>`
+  function renderGearPlan(g, equipments) {
+    const equipment = equipments[g.gear - 1]
+    const goals = describeGearGoals(g.subTargets, equipment?.initialInput)
+    const heading = `装备 ${g.gear}${equipment?.label ? ` · ${equipment.label}` : ''}`
+    if (goals.state === 'unassigned') return `<section class="character-gear-plan"><h4>${escape(heading)}</h4><p class="strategy-note">本轮未给这件装备分配洗练目标，暂时不用操作。</p></section>`
+    if (goals.state === 'unknown') return `<section class="character-gear-plan"><h4>${escape(heading)}</h4><p>本件目标暂时无法展示，请重新运行计算器。</p></section>`
+    const next = g.nextAction.replaceAll(`装备 ${g.gear}：`, '').replace('该件子目标已完成', '本件目标已达成')
+    return `<section class="character-gear-plan"><h4>${escape(heading)} <span class="gear-goal-status ${goals.state === 'met' ? 'is-met' : ''}">${goals.state === 'met' ? '本件目标已达成' : '本件目标尚未全部达成'}</span></h4><p class="gear-next-action"><b>本次操作（只执行一轮）：</b>${escape(next)}</p><div class="resource-table-wrap"><table class="resource-table gear-goals"><thead><tr><th>本件洗练目标（全部达成）</th><th>当前词条</th><th>进度</th></tr></thead><tbody>${goals.targets.map(t => `<tr><th>${escape(t.stat)} ≥ ${t.tier} 档（${escape(t.value)}）</th><td>${t.currentTier === null ? '请核对当前盘面' : t.currentTier === 0 ? '无该词条' : `第 ${t.slot} 栏 · ${t.currentTier} 档（${escape(t.currentValue)}）`}</td><td class="${t.met === true ? 'goal-met' : ''}">${t.met === null ? '待核对' : t.met ? '已达标' : t.currentTier === 0 ? '尚未洗出' : `还差 ${t.tier - t.currentTier} 档`}</td></tr>`).join('')}</tbody></table></div><p class="strategy-note gear-recalculate">达成后重新运行计算器。每次洗练后也请先更新实际盘面，再重新计算下一步。</p></section>`
+  }
+  function renderCharacter(value, equipments) {
+    result.innerHTML=`<h3>四装备 · 剩余资源期望（近似）</h3><p class="strategy-note">${escape(value.note)}</p><p class="strategy-note">允许使用自订秘钥 · zbx ${escape(value.settings.zbxRule)}；p=${value.settings.p}；${value.settings.characterTargets.map(t=>escape(t.stat)+' 总档位≥'+t.totalTier).join('、')}</p><div class="resource-table-wrap"><table class="resource-table"><thead><tr><th>模型 / 策略</th><th>预期洗练石</th><th>预期秘钥</th></tr></thead><tbody><tr><th>zbx 同模型全石头（近似）</th><td>${number(value.expected.stoneOnly)}</td><td>0</td></tr><tr><th>允许使用自订秘钥（近似）</th><td>${number(value.expected.withKeysStone)}</td><td>${number(value.expected.withKeysKeys)}</td></tr></tbody></table></div><p class="strategy-note">上表是达成全部目标的平均剩余消耗；下面的操作建议只针对当前这一轮。</p>${value.gears.map(g=>renderGearPlan(g,equipments)).join('')}<p class="strategy-note">每执行一次后按实际四件盘面重新计算。结果只保留于本工具，不写角色档案；两种资源分别展示。</p>`
     result.hidden=false
   }
   const deltaText = value => `${value < -1e-8 ? '减少' : value > 1e-8 ? '增加' : '不变'}${Math.abs(value)>1e-8 ? ' '+number(Math.abs(value)) : ''}（后 − 前 ${value>1e-8?'+':''}${Math.abs(value)<1e-8?'0':number(value)}）`
@@ -168,7 +178,7 @@ export function installStrategyUI(api) {
     run(single?'resourceSingle':'resourceCharacter',input,value=>{
       if(signature!==currentFingerprint())throw new Error('计算期间盘面或策略已变更，本次结果失效，请重算。')
       if(single)renderCurrent(value);else {
-        renderCharacter(value)
+        renderCharacter(value,input.equipments)
         if(!value.approx) {
           result.querySelector('h3').textContent='四装备 · 剩余资源期望（已达标）'
           result.querySelectorAll('tbody th').forEach(cell=>{cell.textContent=cell.textContent.replace('（近似）','（已达标）')})

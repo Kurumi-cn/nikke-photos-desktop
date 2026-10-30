@@ -29,7 +29,7 @@ function calculator(file, initialStorage = {}) {
     displayMode, showHalfPoints, chaptersData, outpostData, baseDefenseLevel, progressCurrent,
     resourceOutput, tableData, calculateBaseDefenseLevel, updateTableData,
     handleEasyModeChange, handleHardModeChange, handleCnLevelCorrectionChange, loadData,
-    ${file.includes('upstream') ? '' : 'loading, loadError,'}
+    ${file.includes('upstream') ? '' : 'loading, loadError, latestServer, keepLatestChapter, handleKeepLatestChange, handleLatestServerChange,'}
   };`, context)
   context.api.chaptersData.value = flat
   context.api.outpostData.value = outputs
@@ -97,3 +97,25 @@ await invalid.api.loadData()
 assert.equal(invalid.api.selectedCnLevelCorrection.value, 3)
 assert.equal(invalid.api.loadError.value, '')
 console.log('普通进度与参考表同步、完整选择路径、坏设置回退、独立存储与恢复通过')
+
+// Source update: selectable stages, saved preferences and "latest" must reach the new final chapter.
+assert.equal(flat.at(-1).section, '50-36 BOSS')
+assert.equal(flat.length, 1875)
+assert.equal(new Set(flat.map(c => c.id)).size, flat.length)
+assert.ok(flat.some(c => c.section === '49-36 BOSS'))
+for (const stageName of ['49-36 BOSS','50-36 BOSS']) {
+  const entry = flat.find(c => c.section === stageName)
+  instance.api.handleEasyModeChange([entry.chapterName, entry.id])
+  const restored = calculator('src/App.vue', Object.fromEntries(instance.writes))
+  await restored.api.loadData()
+  assert.deepEqual(normalize(restored.api.selectedEasyMode.value), [entry.chapterName,entry.id])
+}
+instance.api.latestServer.value = 'global'
+instance.api.keepLatestChapter.value = true
+instance.api.handleKeepLatestChange(true)
+assert.equal(instance.api.selectedEasyMode.value[1], flat.at(-1).id)
+instance.api.latestServer.value = 'cn'
+instance.api.handleLatestServerChange('cn')
+assert.equal(instance.api.selectedEasyMode.value[1], flat.find(c => c.section.startsWith('40-36')).id)
+for (const [level, dust] of [[204,'39.66'],[214,'40.23'],[542,'71.1'],[641,'77.46'],[659,'78.57']]) assert.equal(outputs[level].core_dust,dust)
+console.log('49/50章选择与恢复、国际服最新50-36、国服独立进度与来源数据修正通过')

@@ -18,3 +18,11 @@
 .compare-panel .section-heading { flex-wrap:wrap; }
 .compare-panel p { font-size:12px; line-height:1.7; }
 #compare-output { overflow-wrap:anywhere; }
+.character-gear-plan { margin-top:16px; padding:14px; border:1px solid var(--line); border-radius:var(--control-radius); }
+.character-gear-plan h4 { margin:0 0 10px; font-size:14px; line-height:1.7; }
+.gear-goal-status { display:inline-block; margin-left:8px; color:var(--muted); font-size:12px; font-weight:400; }
+.gear-goal-status.is-met, .gear-goals .goal-met { color:var(--success); }
+.gear-next-action { margin:0 0 12px; font-size:13px; line-height:1.8; overflow-wrap:anywhere; }
+.gear-goals th:first-child { width:45%; }
+.gear-goals th:last-child, .gear-goals td:last-child { white-space:nowrap; }
+.gear-recalculate { margin:10px 0 0; }

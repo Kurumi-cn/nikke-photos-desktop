@@ -56,7 +56,7 @@
           <tr v-if="!tableData.length"><td colspan="3" class="empty">{{ loading ? '正在加载数据…' : '当前进度与显示条件下暂无提升节点。' }}</td></tr></tbody></table></div>
       <p class="table-note">共 {{ tableData.length }} 个提升节点 · 普通战役修改后自动刷新；数据覆盖范围外的关卡不列入。</p>
     </section>
-    <footer class="calculator-footer"><span>本地数据版本 {{ dataVersion || '—' }}</span></footer>
+    <footer class="calculator-footer"><span>本地关卡至 {{ chaptersData.at(-1)?.section || '—' }} · 数据标识 {{ dataVersion || '—' }}</span></footer>
   </main>
 </template>
 <script setup>

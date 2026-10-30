@@ -6,6 +6,7 @@ import { solve as zbxSolve } from '../zbx/affix_solver.mjs'
 export const STRATEGIES = Object.freeze({ STONE:'workshop-stone', KEYS:'zbx-keys' })
 const CODES = Object.freeze({ '优越代码伤害增加':'uy', '攻击力增加':'gj', '最大装弹数增加':'dr',
   '暴击伤害增加':'bs', '暴击率增加':'bj', '防御力增加':'fy', '命中率增加':'mz', '蓄力速度增加':'xs', '蓄力伤害增加':'xl' })
+export const ZBX_STAT_CODES = CODES
 const clone = value => structuredClone(value)
 
 function validateLines(rows, count, label) {

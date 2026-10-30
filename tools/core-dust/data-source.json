@@ -1,0 +1,19 @@
+{
+  "source": "https://nikkeoutpost.netlify.app/",
+  "checkedOn": "2026-10-30",
+  "note": "Raw source versions are upstream identifiers, not a sortable update date. Chapter data extends through 50-36 BOSS; do not infer CN release progress from global data.",
+  "files": {
+    "chapters": {
+      "url": "https://nikkeoutpost.netlify.app/chapters.json",
+      "version": "202510",
+      "sha256": "0e870eb4d9fb3f944f6d04063fb5871b79d2f0f0a6599582b580ae8bc988143e",
+      "entries": 1875
+    },
+    "outpost": {
+      "url": "https://nikkeoutpost.netlify.app/outpost.json",
+      "version": "202507",
+      "sha256": "034237efcef38ee14e46c8fd62c100d79eb3ed18a703da4f79e2f9c833fde30e",
+      "entries": 800
+    }
+  }
+}
