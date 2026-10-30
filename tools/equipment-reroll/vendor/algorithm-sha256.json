@@ -1,0 +1,23 @@
+{
+  "commit": "24b52299b23098cb6f816a5a3308daa8b2058388",
+  "files": {
+    "calculationRules.js": "d84344939a4b4f1fb1f26049e848f49ac2ac8b71d795edda49dc9fd778067bbb",
+    "duplicateReroll.js": "c983214d2e1ded3089d4613796b4fb233c39b678778869b4527e5349f8540c6d",
+    "engine.js": "c64141cf124d5978cc1514e6810ed53d7364b4e463073ac45e3507bef50148a3",
+    "equipmentEffectOverview.js": "6f27d3a19fd44b849825fc1e60334eb5a66ab670f41e45a5ac520471f325ae91",
+    "forcedRetention.js": "0e74455832eaf13b09fcd70aef4b0c00de65ca0203bf869b502f30fd259c2f4a",
+    "globalPlanSearch.js": "0319e77a1c9dc7562de13783e8f5c21cb0fd504678c4d2743801f72f4adc0b6a",
+    "globalPresets.js": "ec68d9fb8174f6f6e4b7d0bca12677bb5e57d10c4e5dd2d0f48360fbef07c441",
+    "manualEquipment.js": "7278b604a567ecdc81cd86154ec8cebda4cc93b484eccc6a81a3413017c489d5",
+    "policySummary.js": "31a3459f6c20bde565fbd9b9c1a84e8de8fb18a04bec5a8c0232fd24a939b7a9",
+    "policyTree.js": "8ead112d6c2d8ad5ba3ca02edec0ede6d22a880e453c1e37e3c56cb9ff5bb5e2",
+    "statOptions.js": "7e16abfc5e282bc47cc47e1c9a83b6259559593b83a72854e86de6b6956c3112",
+    "workerClient.js": "c5079f924732f5417c12773485a5ac98fb61401cfc2cd00f8360917df4500c93"
+  },
+  "integrationChanges": {
+    "calculator.worker.js": {
+      "upstreamSha256": "f928e3cb98a985524559437060767529ab4cee24288ea4681114e295dd59c0ce",
+      "change": "route-only: add resourceSingle and compareSingle handlers; original solvers unchanged"
+    }
+  }
+}

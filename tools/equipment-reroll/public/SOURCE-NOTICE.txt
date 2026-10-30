@@ -1,0 +1,22 @@
+NIKKE Workshop calculator desktop adaptation
+Upstream: https://github.com/ChrisLu7899/NIKKE-Workshop
+Commit: 24b52299b23098cb6f816a5a3308daa8b2058388 (1.0.15)
+License: GPL-3.0-or-later. See LICENSE.txt and source/.
+Modifications (2026-10-25): standalone manual UI, removal of extension/account/roster integrations, isolated draft/result storage, local build paths and desktop theme.
+Workshop engine/probability modules remain unchanged; Worker routing adds resourceSingle/compareSingle. Hashes, the original Worker and test fixtures are included in source/.
+Full corresponding component source and build instructions are provided under source/ in this local build. Third-party runtime licenses are in THIRD_PARTY_LICENSES.txt.
+No upstream game images, official SD icons, third-party artwork, or recommendation-guide content are included.
+Four-equipment allocation uses bounded candidate/beam/neighborhood search, not a guaranteed global optimum or a joint dynamic MDP.
+Search budgets: 12 assignments per mask; beam 64 per line count; initial 10 exact plans; up to 4 neighbor rounds, 3 seeds and 12 plans/round, patience 2.
+Single-equipment guards: 24,000 states and 20,000 iterations; UI supports at most 6 global conditions.
+
+Additional MIT component (2026-10-25): zbxzbx98/affix_solver.js, commit 4a2d9a5219919c3b88b7c1f9eff85ad8424e1d6b.
+Copyright (c) 2024 zbxzbx98. See ZBX-LICENSE.txt and source/tools/equipment-reroll/vendor/zbx/.
+The generated ESM package only replaces CommonJS/CLI wrapping and adds output-only model-mode metadata; numerical model and key threshold semantics are unchanged.
+The integration adapters remain GPL-3.0-or-later. zbx's MIT notices are retained separately; the combined calculator is not relabeled as MIT.
+Keys and remaining-cost comparison are enabled for supported single-equipment inputs only. Workshop forced retention and 4-5 candidate pools are not silently discarded. Four-equipment enhancements remain disabled.
+
+Additional simulator MIT components (2026-10-25), same zbx commit: AffixSimulator.vue, affix_4gear_solver.js, affix_tier_ranges.js. Original sources/SHA256 and worker call path are retained under vendor/zbx.
+The simulator is a separate local Vue document with random/custom and single/four-gear practice. No account bridge, audio, remote resources or profile writes. Lock costs/probability rules are preserved.
+Simulator theory uses zbx p=0.1; four-gear theory uses the original decomposed candidate approximation, NOT a guaranteed joint optimum. This is separate from Workshop formal planning. Unsupported global averaged-band theory is rejected.
+Desktop request cancellation, timeout, custom restart correction, styling and provenance changes are documented in ZBX-SIMULATOR.md. The combined adaptation remains GPL-3.0-or-later with original MIT notices intact.

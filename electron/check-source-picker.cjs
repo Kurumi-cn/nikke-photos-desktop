@@ -1,0 +1,100 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
+const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+module.exports=async function({window:win,presentSources,cacheRoot}) {
+  const web=win.webContents,js=code=>web.executeJavaScript(code),report={};
+  const until=async(code,attempts=180)=>{for(let i=0;i<attempts;i++){if(await js(code))return;await delay(50)}throw Error('Picker timeout: '+code)};
+  await until("!!document.querySelector('.topbar')");
+  win.showInactive();
+  win.focus();
+  await delay(150);
+  await js("[...document.querySelectorAll('button')].find(b=>b.textContent==='知道了')?.click()");
+  const entry=(id,name='工作窗口',pid=45)=>({source:{id:'window:'+id+':0',name},owner:{handle:String(id),name:'example',pid},game:false});
+  let rows=Array.from({length:120},(_,i)=>entry(i+1,i===0?'很长的窗口名称：'+('窗口内容文字VeryLongWindowTitle'.repeat(22)):'可用窗口 '+(i+1)));
+  let next=rows;
+  const open=async(entries,refresh=async()=>next)=>{
+    const done=presentSources({reason:'未检测到 NIKKE 游戏窗口，请确认游戏已打开且未最小化。',entries,refresh});
+    await until("!!document.querySelector('.capture-source-dialog[open]')");return {done};
+  };
+  const click=code=>js(code);
+  const state=await open(rows);
+  report.layout=await js("(()=>{const d=document.querySelector('.capture-source-dialog'),l=document.querySelector('.capture-source-list'),r=d.getBoundingClientRect();return {width:r.width,height:r.height,bodyOverflow:d.scrollHeight>d.clientHeight,listOverflow:l.scrollHeight>l.clientHeight,horizontalOverflow:d.scrollWidth>d.clientWidth,listHorizontalOverflow:l.scrollWidth>l.clientWidth,disabled:document.querySelector('.capture-source-dialog [type=submit]').disabled}})()");
+  assert.equal(report.layout.width,800);assert.equal(report.layout.height,520);assert.equal(report.layout.bodyOverflow,false);assert.equal(report.layout.listOverflow,true);assert.equal(report.layout.horizontalOverflow,false);assert.equal(report.layout.listHorizontalOverflow,false);assert.equal(report.layout.disabled,true);
+  await click("document.querySelector('.capture-source-item input').click()");
+  await until("!document.querySelector('.capture-source-dialog [type=submit]').disabled");
+  assert.equal(await js("document.querySelector('.capture-source-name').title.length>300"),true);
+  await delay(180);
+  fs.writeFileSync(path.join(cacheRoot,'source-picker-light.png'),(await web.capturePage(undefined,{stayHidden:true,stayAwake:true})).toPNG());
+  await js("document.querySelector('.capture-source-item input').focus()");
+  web.sendInputEvent({type:'keyDown',keyCode:'Down'});web.sendInputEvent({type:'keyUp',keyCode:'Down'});
+  await until("document.querySelectorAll('.capture-source-item input')[1].checked");
+  report.arrowKeys=true;
+  // Keep an existing identity, even if enumeration order changes.
+  next=[rows[1],rows[0],...rows.slice(2)];
+  await click("document.querySelector('.capture-source-toolbar button').click()");
+  await until("!document.querySelector('.capture-source-toolbar button').disabled");
+  assert.equal(await js("document.querySelectorAll('.capture-source-item input')[0].checked"),true);report.refreshRetains=true;
+  // Same HWND/name with changed PID is a different selection identity.
+  next=[entry(2,rows[1].source.name,99),...rows.slice(2)];
+  await click("document.querySelector('.capture-source-toolbar button').click()");
+  await until("!document.querySelector('.capture-source-toolbar button').disabled");
+  assert.equal(await js("document.querySelector('.capture-source-dialog [type=submit]').disabled"),true);report.refreshClearsChangedOwner=true;
+  next=[];
+  await click("document.querySelector('.capture-source-toolbar button').click()");
+  await until("!!document.querySelector('.capture-source-empty')");
+  assert.match(await js("document.querySelector('.capture-source-empty').innerText"),/刷新窗口列表/);
+  fs.writeFileSync(path.join(cacheRoot,'source-picker-empty.png'),(await web.capturePage(undefined,{stayHidden:true,stayAwake:true})).toPNG());
+  report.empty=true;
+  next=[rows[0]];
+  await click("document.querySelector('.capture-source-toolbar button').click()");
+  await until("document.querySelectorAll('.capture-source-item').length===1");
+  await click("document.querySelector('.capture-source-item input').click()");
+  await click("document.querySelector('.capture-source-dialog [type=submit]').click()");
+  assert.equal(await state.done,rows[0]);report.confirmOriginalSource=true;
+  await until("!document.querySelector('.capture-source-dialog')");
+  let cancel=await open([]);
+  web.sendInputEvent({type:'keyDown',keyCode:'Escape'});web.sendInputEvent({type:'keyUp',keyCode:'Escape'});
+  assert.equal(await cancel.done,null);report.escape=true;
+  await until("!document.querySelector('.capture-source-dialog')");
+  cancel=await open(rows);
+  await click("[...document.querySelectorAll('.capture-source-dialog .dlg-foot button')].find(b=>b.textContent==='取消').click()");
+  assert.equal(await cancel.done,null);report.cancel=true;
+  await until("!document.querySelector('.capture-source-dialog')");
+  await js("document.documentElement.dataset.theme='dark'");
+  cancel=await open(rows);
+  await click("document.querySelector('.capture-source-item input').click()");
+  report.darkBackground=await js("getComputedStyle(document.querySelector('.capture-source-dialog')).backgroundColor");
+  await delay(180);
+  fs.writeFileSync(path.join(cacheRoot,'source-picker-dark.png'),(await web.capturePage(undefined,{stayHidden:true,stayAwake:true})).toPNG());
+  win.setMinimumSize(0,0);win.setSize(650,420);
+  await delay(120);
+  report.smallViewport=await js("(()=>{const d=document.querySelector('.capture-source-dialog'),r=d.getBoundingClientRect();return {width:r.width,height:r.height,viewportWidth:innerWidth,viewportHeight:innerHeight,overflow:d.scrollHeight>d.clientHeight}})()");
+  assert.ok(report.smallViewport.width<=report.smallViewport.viewportWidth-30);assert.ok(report.smallViewport.height<=report.smallViewport.viewportHeight-30);assert.equal(report.smallViewport.overflow,false);
+  await click("document.querySelector('.capture-source-dialog .dlg-x').click()");await cancel.done;
+  win.setSize(1440,960);win.setMinimumSize(1000,700);
+  await js("document.documentElement.dataset.theme='light'");
+  // Continue through the actual IPC -> manual selection -> existing WGC/OCR input.
+  // The fixture is a normal background BrowserWindow, not a mock capture backend.
+  const {spawn}=require('node:child_process');
+  const fixtureData=path.join(cacheRoot,'fixture-data');fs.mkdirSync(fixtureData,{recursive:true});
+  const fd=fs.openSync(path.join(cacheRoot,'fixture-runtime.log'),'a');
+  const fixture=spawn(process.execPath,[path.join(__dirname,'source-picker-fixture.cjs')],{env:{...process.env,NIKKE_FIXTURE_DATA:fixtureData},stdio:['ignore',fd,fd,'ipc'],windowsHide:true});
+  fs.closeSync(fd);
+  try {
+    await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error('Fixture startup timeout')),15000);fixture.once('message',()=>{clearTimeout(timer);resolve()});fixture.once('error',reject);fixture.once('exit',code=>{clearTimeout(timer);reject(Error('Fixture exited: '+code))})});
+    await js("location.hash='/data?code=3007'");
+    await until("!!document.querySelector('button[title=\"从装备面板截图识别词条\"]')");
+    await click("document.querySelector('button[title=\"从装备面板截图识别词条\"]').click()");
+    await until("!!document.querySelector('.ocr-drop-text')");
+    await click("[...document.querySelectorAll('.ocr-drop-actions button')].find(b=>b.textContent==='手动选择窗口').click()");
+    await until("[...document.querySelectorAll('.capture-source-name')].some(e=>e.textContent==='OCR 来源选择验收窗口')");
+    await click("[...document.querySelectorAll('.capture-source-item')].find(e=>e.querySelector('.capture-source-name').textContent==='OCR 来源选择验收窗口').querySelector('input').click()");
+    await click("document.querySelector('.capture-source-dialog [type=submit]').click()");
+    await until("!document.querySelector('.ocr-status') && (!!document.querySelector('.ocr-capture-thumb') || !!document.querySelector('.dlg-error'))",600);
+    report.captureContinuation=await js("({width:document.querySelector('.ocr-capture-thumb')?.naturalWidth,height:document.querySelector('.ocr-capture-thumb')?.naturalHeight,message:document.querySelector('.dlg-error')?.textContent,info:document.querySelector('.ocr-capture')?.innerText})");
+    assert.ok(report.captureContinuation.width>500,JSON.stringify(report.captureContinuation));assert.ok(report.captureContinuation.height>300);
+    assert.match(report.captureContinuation.message,/未检测到装备面板|未识别到改造装备词条/);
+    // ESC on the picker must not have closed the parent equipment dialog.
+    report.parentDialogPreserved=await js("!!document.querySelector('.ocr-drop-text')");assert.ok(report.parentDialogPreserved);
+  }finally{if(fixture.connected)fixture.send('close');else fixture.kill()}
+  return report;
+};

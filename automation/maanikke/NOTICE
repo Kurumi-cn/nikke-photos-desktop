@@ -1,0 +1,6 @@
+MaaNikke integration for NIKKE Photos v1.0.
+Upstream: https://github.com/Shinarin/MaaNikke
+Commit: eab10c90ba1f3502bf9576a6669d0f83e27bbc1e
+Upstream license: GPL-3.0; see vendor/LICENSE and provenance.json.
+Local integration adds read-only OCR, user-selected equipment collection, stable-frame checks, and explicit result review before saving.
+Python dependencies are pinned in requirements.txt.

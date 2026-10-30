@@ -1,0 +1,44 @@
+.reroll-import-dialog { width: min(860px, calc(100vw - 32px)); height: min(670px, calc(100dvh - 32px)); max-width: none; max-height: none; padding: 0; color: var(--text); overflow: hidden; animation: none; }
+.reroll-import-dialog::backdrop { background: var(--overlay); }
+.reroll-import-dialog form { height: 100%; display: flex; flex-direction: column; }
+.reroll-import-dialog .dlg-head, .reroll-import-dialog .dlg-foot { flex: none; }
+.reroll-import-note { padding: 14px 18px 0; font-size: 12px; }
+.reroll-import-note p { color: var(--text-2); margin: 6px 0; }
+.reroll-import-search { display: flex; flex-direction: column; gap: 6px; padding: 10px 18px; font-size: 12px; }
+.reroll-import-search input { width: 100%; }
+.reroll-import-body { display: grid; grid-template-columns: minmax(180px, 0.8fr) minmax(0, 1.2fr); gap: 14px; padding: 0 18px; flex: 1; min-height: 0; }
+.reroll-import-list, .reroll-import-preview { overflow: auto; min-width: 0; border: 1px solid var(--border); border-radius: var(--radius-sm); overscroll-behavior: contain; }
+.reroll-import-option { display: flex; gap: 10px; align-items: center; padding: 10px; min-height: 58px; cursor: pointer; border-bottom: 1px solid var(--border); content-visibility: auto; contain-intrinsic-size: auto 58px; }
+.reroll-import-option:hover { background: var(--bg-3); }
+.reroll-import-option:has(input:checked) { background: var(--primary-soft); box-shadow: inset 3px 0 var(--primary); }
+.reroll-import-option:has(input:focus-visible) { outline: 2px solid var(--primary-border); outline-offset: -2px; }
+.reroll-import-option img { width: 36px; height: 36px; object-fit: contain; }
+.reroll-import-option input { accent-color: var(--primary); }
+.reroll-import-option > span { min-width: 0; overflow-wrap: anywhere; }
+.reroll-import-option small { display: block; color: var(--text-2); }
+.reroll-import-preview { padding: 12px; }
+.reroll-import-preview section + section { border-top: 1px solid var(--border); margin-top: 12px; padding-top: 10px; }
+.reroll-import-preview h3 { margin: 0 0 6px; font-size: 13px; }
+.reroll-import-preview p { display: flex; justify-content: space-between; gap: 12px; font-size: 12px; margin: 5px 0; }
+.reroll-import-preview b { white-space: nowrap; font-weight: 500; }
+.reroll-import-empty { padding: 12px; color: var(--text-2); font-size: 12px; }
+.reroll-import-status { margin: 0; padding: 10px 18px; color: var(--text-2); font-size: 12px; }
+.reroll-import-slot { display:flex; align-items:center; gap:8px; cursor:pointer; min-height:28px; }
+.reroll-import-slot input { accent-color:var(--primary); }
+.reroll-import-equipment-content { display:grid; grid-template-columns:64px minmax(0,1fr); gap:12px; align-items:center; }
+.reroll-import-equipment-art { display:flex; align-items:center; justify-content:center; position:relative; isolation:isolate; width:64px; height:64px; border:1px solid #e9819d; border-radius:6px;
+  /* Same overload frame as characterCard.css .np-equipment-icon. */
+  background:radial-gradient(circle, rgb(132 144 154 / 13%) 0 0.5px, transparent 0.65px), rgb(245 247 248 / 82%); background-size:4px 4px;
+  box-shadow:0 3px 3px rgb(18 20 24 / 44%), inset 0 0 0 1px rgb(255 255 255 / 66%), inset 0 0 6px rgb(255 68 126 / 18%);
+}
+.reroll-import-equipment-art::before { content:''; position:absolute; z-index:3; inset:1px; border:1px solid rgb(255 181 201 / 46%); border-radius:4px; pointer-events:none; }
+.reroll-import-equipment-art img { position:relative; z-index:1; width:calc(100% - 2px); height:calc(100% - 2px); object-fit:contain; }
+.reroll-import-equipment-art > span { padding:4px; color:var(--text-2); font-size:11px; text-align:center; }
+.reroll-import-affixes { width:100%; border-collapse:collapse; font-size:12px; }
+.reroll-import-affixes th { font-size:11px; font-weight:400; color:var(--text-2); }
+.reroll-import-affixes :is(th,td) { padding:5px 0 5px 8px; text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.reroll-import-affixes :is(th,td):first-child { padding-left:0; text-align:left; white-space:normal; overflow-wrap:anywhere; }
+.reroll-import-affixes td:first-child { width:100%; }
+.reroll-import-affixes .reroll-import-value { font-weight:600; }
+@media(max-width:600px) { .reroll-import-equipment-content { grid-template-columns:48px minmax(0,1fr); gap:8px; } .reroll-import-equipment-art { width:48px; height:48px; } }
+@media(max-width:600px) { .reroll-import-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(100px, 1fr) minmax(100px, 1.2fr); } }

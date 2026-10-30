@@ -1,0 +1,143 @@
+{
+  "name": "nikke-photos-desktop",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --configLoader native",
+    "build": "vite build --configLoader native",
+    "preview": "vite preview --configLoader native",
+    "data:build": "node scripts/build-roster.mjs",
+    "data:check": "node scripts/build-roster.mjs --check",
+    "data:cubes": "node scripts/build-cubes.mjs",
+    "data:affix-check": "node scripts/check-affix-summary.mjs",
+    "store:migrate-check": "node scripts/check-migrations.mjs",
+    "account:check": "node scripts/check-account-import.mjs",
+    "workshop:check": "node scripts/check-workshop-import.mjs",
+    "i18n:map": "node scripts/build-s2t-map.mjs",
+    "i18n:check": "node scripts/check-i18n.mjs",
+    "share:check": "node scripts/check-share-code.mjs",
+    "ocr:scan": "node scripts/ocr-scan.mjs",
+    "ocr:extract": "node scripts/extract-glyph-templates.mjs",
+    "ocr:regress": "node scripts/ocr-regression.mjs",
+    "ocr:equip-glyphs": "node scripts/extract-equipment-glyphs.mjs",
+    "ocr:equip": "node scripts/ocr-equipment.mjs",
+    "ocr:equip-regress": "node scripts/ocr-equipment.mjs --samples",
+    "assets:sync": "node scripts/sync-assets.mjs",
+    "fonts:card": "node scripts/build-card-font-subset.mjs",
+    "start": "node desktop-scripts/run.cjs start",
+    "desktop:dev": "node desktop-scripts/run.cjs dev",
+    "desktop:pack": "node desktop-scripts/run.cjs pack",
+    "desktop:build": "node desktop-scripts/run.cjs build",
+    "desktop:smoke": "node desktop-scripts/run.cjs smoke",
+    "tools:build": "node desktop-scripts/build-tools.cjs",
+    "predev": "npm run tools:build",
+    "prebuild": "npm run tools:build",
+    "tools:check": "node scripts/check-core-dust.mjs",
+    "workshop:solver-check": "node scripts/check-workshop-solver.mjs",
+    "reroll-import:check": "node scripts/check-reroll-import.mjs",
+    "workspace:ui-check": "node desktop-scripts/check-workspace-ui.cjs",
+    "reroll-import:ui-check": "node desktop-scripts/check-reroll-import.cjs",
+    "workshop:upstream-tests": "node --test tools/equipment-reroll/tests/*.test.mjs",
+    "strategy:check": "node --test tools/equipment-reroll/strategy-tests/*.test.mjs",
+    "strategy:ui-check": "node desktop-scripts/check-reroll-strategy.cjs",
+    "simulator:check": "node --test tools/equipment-reroll/simulator-tests/*.test.mjs",
+    "resource-income:check": "node --test scripts/check-resource-income.test.mjs",
+    "belorta:check": "node scripts/check-belorta.mjs",
+    "capture:check": "node scripts/check-capture-source.cjs && node scripts/check-capture-frame.cjs",
+    "capture:probe": "node desktop-scripts/probe-capture.cjs",
+    "desktop:capture-check": "node desktop-scripts/run.cjs capture-check",
+    "capture:picker-check": "node desktop-scripts/check-source-picker.cjs",
+    "custom-nikke:check": "node scripts/check-custom-nikke.mjs",
+    "custom-nikke:ui-check": "node desktop-scripts/check-custom-nikke.cjs",
+    "desktop:beta": "node desktop-scripts/build-beta.cjs",
+    "cn-roster:dev": "node devtools/cn-roster/server.mjs",
+    "cn-roster:apply": "node devtools/cn-roster/apply.mjs",
+    "desktop:release": "node desktop-scripts/build-release.cjs"
+  },
+  "dependencies": {
+    "html-to-image": "^1.11.13",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "react-router-dom": "^7.18.4"
+  },
+  "devDependencies": {
+    "@element-plus/icons-vue": "^2.3.2",
+    "@vitejs/plugin-react": "^6.1.1",
+    "@vitejs/plugin-vue": "^6.0.10",
+    "electron": "^45.0.0",
+    "electron-builder": "^26.18.0",
+    "element-plus": "^2.14.7",
+    "exceljs": "^4.4.0",
+    "pinyin-pro": "^3.29.4",
+    "pngjs": "^7.0.0",
+    "vite": "^8.3.1",
+    "vue": "^3.5.44"
+  },
+  "description": "NIKKE Photos Windows desktop client",
+  "author": "小云雀来海",
+  "main": "electron/main.cjs",
+  "build": {
+    "appId": "local.nikke.photos.desktop",
+    "productName": "NIKKE Photos",
+    "directories": {
+      "output": "release/v1.0",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json",
+      "!**/*.map",
+      "!**/node_modules/**/*",
+      "!experiments/**/*",
+      "!electron/maa-lab.cjs",
+      "!**/@maaxyz/**/*",
+      "LICENSE",
+      "LICENSING.md",
+      "!devtools/**/*"
+    ],
+    "asar": true,
+    "npmRebuild": false,
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "signAndEditExecutable": true,
+      "signExecutable": false
+    },
+    "asarUnpack": [
+      "electron/windows-capture.ps1",
+      "electron/windows-capture.cs"
+    ],
+    "afterPack": "./desktop-scripts/beta-after-pack.cjs",
+    "electronDist": "node_modules/electron/dist",
+    "publish": null,
+    "nsis": {
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "oneClick": false,
+      "perMachine": false,
+      "allowElevation": false,
+      "allowToChangeInstallationDirectory": true,
+      "deleteAppDataOnUninstall": false,
+      "runAfterFinish": false,
+      "createDesktopShortcut": false,
+      "createStartMenuShortcut": true,
+      "artifactName": "NIKKE-Photos-v1.0-Windows-x64-Setup.exe",
+      "include": "build/installer.nsh",
+      "installerLanguages": [
+        "zh_CN",
+        "en_US"
+      ],
+      "packElevateHelper": false
+    }
+  },
+  "license": "GPL-3.0-only"
+}

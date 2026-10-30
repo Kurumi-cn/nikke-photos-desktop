@@ -1,0 +1,24 @@
+{
+  "generatedAt": "2026-10-25T12:45:26.647Z",
+  "sourceDir": "E:/桌面/NIKKE Helper/NIKKE Helper v1.0/src/renderer/src/data",
+  "workshopObjectsPath": "E:/博哥/NIKKE WORKSHOP 1.0.14/NIKKE-Workshop-1.0.14/src/data/characterObjectAssets.json",
+  "sourceGeneratedAt": "2026-09-01",
+  "counts": {
+    "characters": 205,
+    "cnAvailable": 143,
+    "collectible": 21,
+    "collectibleCn": 12,
+    "overSpec": 4,
+    "chinaExclusive": 2,
+    "artworks": 383
+  },
+  "extraCharacters": [
+    "5181 德雷克：终极反派",
+    "5182 吉尔提：神力兔女郎",
+    "5183 森：疾速兔女郎",
+    "5184 贝洛塔：南瓜女巫"
+  ],
+  "expectedCnRoster": 143,
+  "errors": [],
+  "warnings": []
+}

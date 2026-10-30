@@ -1,0 +1,72 @@
+{
+  "source": "User supplied list page reference (2026-10-27)",
+  "sourceSha256": "1f569cc93d795a34580c86d10937c238becfad3304641f7ae1aaeb61254178c3",
+  "size": [
+    1920,
+    1080
+  ],
+  "normalizedSize": [
+    1280,
+    720
+  ],
+  "regions": {
+    "header": [
+      17,
+      16,
+      76,
+      36
+    ],
+    "toolbar": [
+      448,
+      130,
+      832,
+      163
+    ],
+    "search": [
+      456,
+      136,
+      482,
+      158
+    ],
+    "burst1": [
+      505,
+      136,
+      520,
+      157
+    ],
+    "burst2": [
+      548,
+      136,
+      566,
+      157
+    ],
+    "burst3": [
+      591,
+      136,
+      612,
+      157
+    ],
+    "favorite": [
+      633,
+      137,
+      654,
+      157
+    ],
+    "circle": [
+      675,
+      138,
+      691,
+      155
+    ]
+  },
+  "templateHashes": {
+    "photos/list-header.png": "4c1c5cc95625fd2ae0109f639686114d2aba81e64a4ce447c479a9dfd77009dc",
+    "photos/list-toolbar.png": "54f333cfcf37bd04f246939b4c49ab791c57e7dd1f83598a340dae6a872717c7",
+    "photos/list-search.png": "dfe208d29abe180b632be7a0f38aacc435267b245fe706e20fcb296de5ccad82",
+    "photos/list-burst1.png": "21a56b3ead6d7a77f722bd2a1d777b0cec226d98dc89d66a86537f550f6cc257",
+    "photos/list-burst2.png": "9b095fccdabe210bb883f011c35cb3feaaf62898535bd3bbec18ce2371d022d4",
+    "photos/list-burst3.png": "02df120901e9de3ee1ac88943168ed9ac5b067cb80c141009a991b33071a9cb6",
+    "photos/list-favorite.png": "15670f1493e8f817fcbf3f55b5c42a5027baa78472587719fdcbd1e673e58043",
+    "photos/list-circle.png": "10f44c56f5dbf572d52f769c1bc2b6d74508339108883a12b47e77e2b6488d97"
+  }
+}

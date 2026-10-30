@@ -1,0 +1,145 @@
+[
+  {
+    "file": "close.png",
+    "source": "E:\\博哥\\codex temp\\nikke-desktop\\automation-dev-copy\\admin-nikke\\aae6f3c9-8a52-4492-91be-0ce5f96faa91\\031-equipment-0-头.png",
+    "crop": [
+      1159,
+      78,
+      1189,
+      108
+    ],
+    "sourceSha256": "2e2ecfb3f2e520abae147707cad1866c7571c83cad3874764efc16f68e08683f"
+  },
+  {
+    "file": "overload.png",
+    "source": "E:\\博哥\\codex temp\\nikke-desktop\\automation-dev-copy\\admin-nikke\\aae6f3c9-8a52-4492-91be-0ce5f96faa91\\031-equipment-0-头.png",
+    "crop": [
+      900,
+      80,
+      1017,
+      117
+    ],
+    "sourceSha256": "2e2ecfb3f2e520abae147707cad1866c7571c83cad3874764efc16f68e08683f"
+  },
+  {
+    "file": "burst-Step1.png",
+    "source": "E:\\博哥\\codex temp\\nikke-desktop\\automation-dev-copy\\admin-nikke\\aae6f3c9-8a52-4492-91be-0ce5f96faa91\\019-query-results-2.png",
+    "crop": [
+      233,
+      451,
+      260,
+      483
+    ],
+    "sourceSha256": "539e0134a3d927e530bae3df0866c8aa44f373430f894cfeb491a9863898505c"
+  },
+  {
+    "file": "burst-Step3.png",
+    "source": "E:\\博哥\\codex temp\\nikke-desktop\\automation-dev-copy\\admin-nikke\\aae6f3c9-8a52-4492-91be-0ce5f96faa91\\019-query-results-2.png",
+    "crop": [
+      84,
+      451,
+      111,
+      483
+    ],
+    "sourceSha256": "539e0134a3d927e530bae3df0866c8aa44f373430f894cfeb491a9863898505c"
+  },
+  {
+    "file": "burst-AllStep.png",
+    "source": "E:\\博哥\\codex temp\\nikke-desktop\\automation-dev-copy\\admin-nikke\\03ed8bc9-4246-415a-95a3-8accfe012500\\009-query-results-2.png",
+    "crop": [
+      233,
+      451,
+      260,
+      483
+    ],
+    "sourceSha256": "d9a7e333b5ca4d64ac42bc2b6078a94145113f2e0928edeedc59b7a3f145923d"
+  },
+  {
+    "file": "tier9.png",
+    "source": "C:\\Users\\xby\\AppData\\Local\\Temp\\codex-clipboard-920f5453-a013-4e35-92f5-6412b6110c76.png",
+    "crop": [
+      247,
+      23,
+      324,
+      65
+    ],
+    "sourceSha256": "a541e44e82f3e3feaa6c6881af4b1fc0f11e784c5ec42cd8ed4ee70844ba9547"
+  },
+  {
+    "file": "empty-0.png",
+    "source": "C:\\Users\\xby\\AppData\\Local\\Temp\\codex-clipboard-17fc4a3f-3baa-4eed-9367-d385010979c3.png",
+    "crop": [
+      35,
+      59,
+      99,
+      116
+    ],
+    "sourceSha256": "b3e08b41c6bf62eec9354dbb7ad7bb27c4210c0a1757e48bdfb1a47b5d1596e2"
+  },
+  {
+    "file": "empty-1.png",
+    "source": "C:\\Users\\xby\\AppData\\Local\\Temp\\codex-clipboard-17fc4a3f-3baa-4eed-9367-d385010979c3.png",
+    "crop": [
+      170,
+      65,
+      233,
+      121
+    ],
+    "sourceSha256": "b3e08b41c6bf62eec9354dbb7ad7bb27c4210c0a1757e48bdfb1a47b5d1596e2"
+  },
+  {
+    "file": "empty-2.png",
+    "source": "C:\\Users\\xby\\AppData\\Local\\Temp\\codex-clipboard-17fc4a3f-3baa-4eed-9367-d385010979c3.png",
+    "crop": [
+      35,
+      170,
+      99,
+      229
+    ],
+    "sourceSha256": "b3e08b41c6bf62eec9354dbb7ad7bb27c4210c0a1757e48bdfb1a47b5d1596e2"
+  },
+  {
+    "file": "empty-3.png",
+    "source": "C:\\Users\\xby\\AppData\\Local\\Temp\\codex-clipboard-17fc4a3f-3baa-4eed-9367-d385010979c3.png",
+    "crop": [
+      169,
+      177,
+      233,
+      237
+    ],
+    "sourceSha256": "b3e08b41c6bf62eec9354dbb7ad7bb27c4210c0a1757e48bdfb1a47b5d1596e2"
+  },
+  {
+    "file": "clear.png",
+    "source": "E:\\博哥\\codex temp\\nikke-desktop\\automation-dev-copy\\admin-nikke\\03ed8bc9-4246-415a-95a3-8accfe012500\\009-query-results-2.png",
+    "crop": [
+      1084,
+      304,
+      1104,
+      324
+    ],
+    "sourceSha256": "d9a7e333b5ca4d64ac42bc2b6078a94145113f2e0928edeedc59b7a3f145923d"
+  },
+  {
+    "file": "search.png",
+    "source": "E:\\博哥\\codex temp\\nikke-desktop\\automation-dev-copy\\admin-nikke\\aae6f3c9-8a52-4492-91be-0ce5f96faa91\\012-list-2.png",
+    "crop": [
+      672,
+      193,
+      735,
+      246
+    ],
+    "sourceSha256": "644f22ac21f04a2446a22ce67110c62e65546e99ab03556ea3b9b92c802b131b"
+  },
+  {
+    "file": "burst-Step2.png",
+    "source": "E:\\博哥\\codex temp\\nikke-desktop\\automation-dev-copy\\admin-nikke\\aae6f3c9-8a52-4492-91be-0ce5f96faa91\\001-initial.png",
+    "crop": [
+      1276,
+      451,
+      1303,
+      483
+    ],
+    "sourceSha256": "af69741442685c9d6beb0d0bb1df9ae63897af2e5b92b48c21af28e93fb68337"
+  }
+]

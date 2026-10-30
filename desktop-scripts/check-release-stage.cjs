@@ -1,0 +1,14 @@
+const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict'),{spawnSync}=require('node:child_process');
+const root=path.resolve(__dirname,'..'),cache=path.resolve(root,'../codex temp/nikke-desktop/release-v1.0'),stage=JSON.parse(fs.readFileSync(path.join(cache,'latest-stage.json'))),qa=path.join(cache,'offline-'+Date.now());
+fs.mkdirSync(qa,{recursive:true});const report={stage:stage.stage,qa,gameInputs:0};
+async function main(){
+ const py=spawnSync(path.join(stage.runtime,'python.exe'),['-I','-B','-X','utf8','-c','import sys,json,importlib.metadata;print(json.dumps({"prefix":sys.prefix,"path":sys.path,"isolated":sys.flags.isolated,"versions":{k:importlib.metadata.version(k) for k in ["maafw","MaaAgentBinary","numpy","Pillow","StrEnum"]}}))'],{encoding:'utf8',windowsHide:true,cwd:qa,env:{...process.env,PYTHONHOME:'X:/not-installed',PYTHONPATH:'X:/not-installed'}});
+ assert.equal(py.status,0,py.stderr);report.python=JSON.parse(py.stdout);assert.equal(path.resolve(report.python.prefix),path.resolve(stage.runtime));assert.equal(report.python.isolated,1);assert.equal(report.python.versions.maafw,'5.12.2');assert.ok(report.python.path.every(file=>path.resolve(file).startsWith(stage.runtime)));
+ const service=require('../electron/maanikke.cjs').createService({project:stage.resources,cacheRoot:qa});
+ try{report.initialized=await service.request('initialize');assert.equal(report.initialized.native,'v5.12.2');assert.equal(report.initialized.agentConnected,true)}finally{await service.stop()}
+ const input=path.join(qa,'sample.png'),result=path.join(qa,'ocr.json');fs.copyFileSync('E:/博哥/NIKKE Photos/文档/ocr_samples/equipment/装备_臂部_v金属护臂.png',input);
+ const ocr=spawnSync(process.execPath,[path.join(stage.resources,'scripts/ocr-equipment.mjs'),'--image',input,'--engine','v2','--report',result],{cwd:stage.resources,encoding:'utf8',windowsHide:true});assert.equal(ocr.status,0,ocr.stderr);const parsed=JSON.parse(fs.readFileSync(result));report.ocrKeys=Object.keys(parsed);const data=parsed.result||parsed;assert.equal(data.rows[2].functionType,'StatCritical');assert.equal(data.rows[2].tier,3);assert.equal(data.rows[2].value,2.98);report.ocr=true;
+ const zip=await require('unzipper').Open.file(stage.sourceZip);report.sourceEntries=zip.files.length;assert.ok(zip.files.some(f=>f.path==='NIKKE-Photos-v1.0/LICENSE'));assert.ok(zip.files.some(f=>f.path==='NIKKE-Photos-v1.0/desktop-scripts/build-release.cjs'));assert.equal(zip.files.some(f=>/^NIKKE-Photos-v1.0\/(data|release|node_modules|工作日志|devtools)\//.test(f.path)),false);
+ report.passed=true;fs.writeFileSync(path.join(qa,'result.json'),JSON.stringify(report,null,2));console.log(JSON.stringify(report));
+}
+main().catch(e=>{report.passed=false;report.error=e.stack;fs.writeFileSync(path.join(qa,'result.json'),JSON.stringify(report,null,2));console.error(e);process.exitCode=1});

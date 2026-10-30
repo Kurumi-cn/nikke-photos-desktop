@@ -1,0 +1,11 @@
+{
+  "repository": "https://github.com/zbxzbx98/zbxzbx98.github.io",
+  "commit": "4a2d9a5219919c3b88b7c1f9eff85ad8424e1d6b",
+  "license": "MIT",
+  "originalSha256": "44bf8676d5fd2387056eb6368afdd4343c87c44be84fa23cc6c276e9b3b8e780",
+  "generatedSha256": "cfd8a0051979f585057cea47b5578e138b6a5753899cf62bca5cd757654d332a",
+  "changes": [
+    "CommonJS/CLI boundary converted to ESM export",
+    "output-only bandTierUsed telemetry"
+  ]
+}

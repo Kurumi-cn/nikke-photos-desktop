@@ -1,0 +1,1955 @@
+// Desktop adaptation: isolated manual calculator; no extension storage, account snapshots, or roster writes.
+// SPDX-License-Identifier: GPL-3.0-or-later
+import { validateInputs, TIER_PROBS, STAT_NAMES, STAT_TIER_VALUES, isTargetCode, targetIndexFromCode, exactActionDescription, statTierBasisPoints, statTierText } from "./engine.js";
+import { runCalculatorWorker } from "./workerClient.js";
+import "./calculator.css";
+import { createRunRecordsWorkbook } from "./exportWorkbook.js";
+import {
+  chooseAvailableGlobalStat,
+  GLOBAL_STAT_DEFAULTS,
+  GLOBAL_TARGET_PRESETS,
+} from "./globalPresets.js";
+import {
+  CALCULATOR_RUN_RECORDS_KEY,
+  listRunRecords,
+  normalizeRunRecordStore,
+  sortRunRecords,
+  upsertRunRecord,
+} from "./resultRecords.js";
+import {
+  createManualFourEquipmentCharacter,
+  isStandaloneCalculatorCollection,
+  MANUAL_FOUR_EQUIPMENT_COLLECTION_ID,
+  shouldShowRecommendationSelector,
+  SINGLE_EQUIPMENT_COLLECTION_ID,
+} from "./manualEquipment.js";
+import {
+  createCandidateDecisionStage,
+  createPolicyBranchStage,
+} from "./policyTree.js";
+import { unavailableStatsForRow } from "./statOptions.js";
+import { summarizeEquipmentEffects } from "./equipmentEffectOverview.js";
+import { CALCULATION_RULES, calculationRuleLabel, normalizeCalculationRule } from "./calculationRules.js";
+
+"use strict";
+
+    if (new URLSearchParams(window.location.search).get("embedded") === "1") {
+      document.documentElement.classList.add("embedded");
+    }
+
+    const EQUIPMENT_SLOT_NAMES = ["头部", "身躯", "臂部", "腿部"];
+    const TARGET_PRESETS = {
+      "superior-attack": ["优越代码伤害增加", "攻击力增加"],
+      superior: ["优越代码伤害增加"],
+      attack: ["攻击力增加"]
+    };
+    const GLOBAL_DEFAULT_CONDITIONS = [
+      { stat: "优越代码伤害增加", ...GLOBAL_STAT_DEFAULTS["优越代码伤害增加"] },
+      { stat: "攻击力增加", ...GLOBAL_STAT_DEFAULTS["攻击力增加"] },
+      { stat: "最大装弹数增加", ...GLOBAL_STAT_DEFAULTS["最大装弹数增加"] }
+    ];
+    const DEFAULT_COLLECTION_SELECTOR_ID = "recommendation-default";
+    const RECOMMENDATION_COLLECTION_PREFIX = "recommendation:";
+    const manualFourEquipmentCharacter = createManualFourEquipmentCharacter(EQUIPMENT_SLOT_NAMES);
+
+    const app = document.querySelector("#app");
+    const initialRows = document.querySelector("#initial-rows");
+    const targetRows = document.querySelector("#target-rows");
+    const calculationRuleSelect = document.querySelector("#calculation-rule");
+    const calculateButton = document.querySelector("#calculate");
+    const resetButton = document.querySelector("#reset");
+    const message = document.querySelector("#message");
+    const result = document.querySelector("#result");
+    const details = document.querySelector("#details");
+    const resultTab = document.querySelector("#result-tab");
+    const detailsTab = document.querySelector("#details-tab");
+    const resultPanel = document.querySelector("#result-panel");
+    const detailsPanel = document.querySelector("#details-panel");
+    const allResultsTab = document.querySelector("#all-results-tab");
+    const allResultsPanel = document.querySelector("#all-results-panel");
+    const savedResultsCount = document.querySelector("#saved-results-count");
+    const savedResultsList = document.querySelector("#saved-results-list");
+    const resultsSortSelect = document.querySelector("#results-sort");
+    const downloadAllResultsButton = document.querySelector("#download-all-results");
+    const progressWrap = document.querySelector("#progress-wrap");
+    const progressTrack = progressWrap.querySelector("[role='progressbar']");
+    const progressBar = document.querySelector("#progress-bar");
+    const progressText = document.querySelector("#progress-text");
+    const collectionSelect = document.querySelector("#collection-select");
+    const recommendationSelect = document.querySelector("#recommendation-select");
+    const characterSelect = document.querySelector("#character-select");
+    const characterAdvice = document.querySelector("#character-advice");
+    const characterAdviceSummary = document.querySelector("#character-advice-summary");
+    const characterAdviceFields = {
+      note: document.querySelector("#character-advice-note"),
+      equipment: document.querySelector("#character-advice-equipment"),
+      lines: document.querySelector("#character-advice-lines"),
+      skills: document.querySelector("#character-advice-skills"),
+      cube: document.querySelector("#character-advice-cube"),
+      collectible: document.querySelector("#character-advice-collectible"),
+    };
+    const classicEquipmentMode = document.querySelector("#classic-equipment-mode");
+    const characterEquipmentMode = document.querySelector("#character-equipment-mode");
+    const equipmentEffectOverview = document.querySelector("#equipment-effect-overview");
+    const equipmentEffectOverviewValues = document.querySelector("#equipment-effect-overview-values");
+    const setupDescription = document.querySelector("#setup-description");
+    const calculationModeSelect = document.querySelector("#calculation-mode");
+    const targetPresetSelect = document.querySelector("#target-preset");
+    const globalTargetPresetSelect = document.querySelector("#global-target-preset");
+    const classicOptimalResult = document.querySelector("#classic-optimal-result");
+    const classicOptimalResultSection = document.querySelector("#classic-optimal-result-section");
+    const globalTargetMode = document.querySelector("#global-target-mode");
+    const globalConditionRows = document.querySelector("#global-condition-rows");
+    const addGlobalConditionButton = document.querySelector("#add-global-condition");
+    const globalTargetStatus = document.querySelector("#global-target-status");
+    let selectedCharacterAdvice = [];
+    let showEquipmentEffectOverview = false;
+    let runRecordStore = normalizeRunRecordStore(null);
+    const characterExactSolutionCache = new Map();
+
+
+    function selectedCalculationRule() {
+      return normalizeCalculationRule(calculationRuleSelect.value);
+    }
+
+    function defaultDetails(calculationRule = selectedCalculationRule()) {
+      const ruleLine = calculationRule === CALCULATION_RULES.CN_LEGACY
+        ? "• 旧规则：采用原始抽取概率，每次洗练结果直接覆盖当前词条。"
+        : "• 新规则：不会出现与当前完全相同的效果与数值；看到候选后可选择覆盖或保留原词条。";
+      return [
+        "使用说明",
+        "=".repeat(36),
+        `• 当前计算模式：${calculationRuleLabel(calculationRule)}。`,
+        "• 有限状态 MDP：枚举完整概率，并在每个盘面比较锁定、洗名称和洗数值。",
+        ruleLine,
+        "• 实际执行一次建议后，请按新的盘面重新计算下一步。"
+      ].join("\n");
+    }
+
+    function optionsHtml(values) {
+      return values.map(value => `<option value="${value}">${value}</option>`).join("");
+    }
+
+    function escapeHtml(value) {
+      return String(value).replace(/[&<>"']/g, character => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;"
+      })[character]);
+    }
+
+
+
+    function selectedCharacter() {
+      return characterSelect.value === MANUAL_FOUR_EQUIPMENT_COLLECTION_ID ? manualFourEquipmentCharacter : null;
+    }
+
+    function selectedCharacterKey() {
+      const character = selectedCharacter();
+      if (!character) return "";
+      return String(character.key || `character::${character.name}`);
+    }
+
+    function hideCharacterAdvice() {
+      selectedCharacterAdvice = [];
+      characterAdvice.open = false;
+      characterAdvice.hidden = true;
+      characterAdviceSummary.textContent = "";
+    }
+
+
+
+    function updateCharacterAdvice() { hideCharacterAdvice(); }
+
+    function compactTargets(targets) {
+      return (targets || [])
+        .filter(target => target?.stat && target.stat !== "空词条")
+        .map(target => ({
+          stat: target.stat,
+          tier: Number(target.tier || 0),
+          flagged: Boolean(target.flagged),
+        }));
+    }
+
+    function compactCurrentLines(lines) {
+      return (lines || [])
+        .filter(line => line?.stat && line.stat !== "空词条")
+        .map(line => ({
+          stat: line.stat,
+          tier: Number(line.tier || 0),
+          valueText: Number(line.tier || 0) > 0 ? statTierText(line.stat, Number(line.tier)) : "",
+          locked: Boolean(line.flagged ?? line.locked),
+          forceKeep: Boolean(line.forceKeep),
+        }));
+    }
+
+    function recordsWithCurrentLineFallback(records) { return records; }
+
+    function targetText(target) {
+      const tierText = target.tier > 0 ? `[${target.tier}档]` : "";
+      const requiredText = target.flagged ? "（必选）" : "";
+      return `${target.stat}${tierText}${requiredText}`;
+    }
+
+    function independentTargetSummary(equipments) {
+      return equipments.map(equipment => {
+        if (equipment.skipped) return `${equipment.label}：不跑`;
+        const targets = compactTargets(equipment.targetInput);
+        return `${equipment.label}：${targets.map(targetText).join("、") || "未设置目标"}`;
+      }).join("；");
+    }
+
+    function globalTargetSummary(conditions) {
+      return (conditions || []).map(condition => {
+        const parts = [];
+        if (Number(condition.minCount) > 0) parts.push(`至少 ${condition.minCount} 条`);
+        if (Number(condition.minTotal) > 0) parts.push(`合计 ≥ ${Number(condition.minTotal).toFixed(2)}%`);
+        return `${condition.stat}：${parts.join("，")}`;
+      }).join("；");
+    }
+
+    function equipmentExpectedCost(item) {
+      if (!item || item.skipped) return 0;
+      return Number(item.exactSolution?.value ?? 0);
+    }
+
+    function equipmentRecommendation(item) {
+      if (!item || item.skipped) return "本次已跳过";
+      const expectedCost = equipmentExpectedCost(item);
+      if (expectedCost <= 1e-9) return "当前盘面已经满足目标";
+      return item.exactSolution?.firstActionText || "—";
+    }
+
+    function formatSavedAt(timestamp) {
+      if (!timestamp) return "";
+      return new Intl.DateTimeFormat("zh-CN", {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+      }).format(new Date(timestamp));
+    }
+
+    function renderRunRecords() {
+      const records = sortRunRecords(listRunRecords(runRecordStore), resultsSortSelect.value);
+      savedResultsCount.textContent = records.length
+        ? `已保存 ${records.length} 名妮姬的最后一次结果`
+        : "尚无已保存结果";
+      downloadAllResultsButton.disabled = records.length === 0;
+
+      if (!records.length) {
+        savedResultsList.innerHTML = '<p class="saved-results-empty">每名妮姬成功运行后，这里会保留其最后一次目标条件和最优结果。</p>';
+        return;
+      }
+
+      savedResultsList.innerHTML = records.map(record => `
+        <article class="saved-result-item">
+          <div class="saved-result-heading">
+            <div>
+              <h3 class="saved-result-name">${escapeHtml(record.characterName || "未知妮姬")}</h3>
+              <div class="saved-result-meta">${record.mode === "global" ? "全局" : "独立"} · ${escapeHtml(formatSavedAt(record.savedAt))}</div>
+            </div>
+            <div class="saved-result-cost">约 ${Number(record.totalExpectedCost || 0).toFixed(1)} 颗石头</div>
+          </div>
+          <p class="saved-result-target">${escapeHtml(record.targetSummary || "未记录目标条件")}</p>
+          <details>
+            <summary>查看最优结果</summary>
+            <pre class="saved-result-detail">${escapeHtml(record.resultText || "—")}</pre>
+          </details>
+        </article>
+      `).join("");
+    }
+
+    function readStoredRunRecords() {
+      try { return Promise.resolve(JSON.parse(localStorage.getItem(CALCULATOR_RUN_RECORDS_KEY) || 'null')); }
+      catch { return Promise.resolve(null); }
+    }
+
+    function writeStoredRunRecords(store) {
+      localStorage.setItem(CALCULATOR_RUN_RECORDS_KEY, JSON.stringify(store));
+      return Promise.resolve();
+    }
+
+    async function loadRunRecords() {
+      runRecordStore = normalizeRunRecordStore(await readStoredRunRecords());
+      renderRunRecords();
+      const character = selectedCharacter();
+      if (character) restoreCharacterRunRecord(character);
+    }
+
+    async function saveRunRecord(record) {
+      try {
+        runRecordStore = upsertRunRecord(runRecordStore, record);
+        await writeStoredRunRecords(runRecordStore);
+        renderRunRecords();
+      } catch (error) {
+        console.error("保存妮姬测试结果失败", error);
+      }
+    }
+
+    async function downloadRunRecords() {
+      const records = sortRunRecords(listRunRecords(runRecordStore), resultsSortSelect.value);
+      if (!records.length) return;
+
+      const workbook = createRunRecordsWorkbook(recordsWithCurrentLineFallback(records), formatSavedAt);
+
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `NIKKE洗词条测试汇总_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      anchor.click();
+      setTimeout(() => URL.revokeObjectURL(url), 0);
+    }
+
+    function clearGlobalPlanOutputs() {
+      characterEquipmentMode.querySelectorAll(".global-assignment-output").forEach(output => {
+        output.textContent = "运行全局测试后显示。";
+      });
+      characterEquipmentMode.querySelectorAll(".equipment-optimal-result").forEach(output => {
+        setInlineOptimalResult(output, "开始计算后显示。", true);
+      });
+      if (calculationModeSelect.value === "global") {
+        globalTargetStatus.textContent = "全局条件已更改，请重新开始计算。";
+        setResult("设置全局目标后，点击“开始计算”。", true);
+      }
+    }
+
+    function selectedGlobalStats(excludeRow = null) {
+      return [...globalConditionRows.querySelectorAll(".global-condition-row")]
+        .filter(row => row !== excludeRow)
+        .map(row => row.querySelector(".global-stat-select")?.value)
+        .filter(Boolean);
+    }
+
+    function syncGlobalStatOptions() {
+      globalConditionRows.querySelectorAll(".global-condition-row").forEach(row => {
+        const statSelect = row.querySelector(".global-stat-select");
+        const usedByOtherRows = new Set(selectedGlobalStats(row));
+        [...statSelect.options].forEach(option => {
+          option.disabled = usedByOtherRows.has(option.value);
+        });
+      });
+    }
+
+    function addGlobalCondition(condition = {}) {
+      if (globalConditionRows.children.length >= 6) {
+        globalTargetStatus.textContent = "测试版暂时最多支持 6 个全局条件。";
+        return;
+      }
+      const availableStats = STAT_NAMES.slice(1);
+      const initialStat = chooseAvailableGlobalStat(
+        availableStats,
+        selectedGlobalStats(),
+        condition.stat || STAT_NAMES[1]
+      );
+      if (!initialStat) {
+        globalTargetStatus.textContent = "所有词条都已添加，不能继续添加重复条件。";
+        return;
+      }
+      const defaults = GLOBAL_STAT_DEFAULTS[initialStat] || { minCount: 1, minTotal: 0 };
+      const row = document.createElement("div");
+      row.className = "global-condition-row";
+      row.innerHTML = `
+        <select class="global-stat-select" aria-label="全局目标词条">
+          ${optionsHtml(STAT_NAMES.slice(1))}
+        </select>
+        <input class="global-min-count" type="number" inputmode="numeric" min="0" max="4" step="1" aria-label="至少条数" value="${Number(condition.minCount ?? defaults.minCount)}">
+        <input class="global-min-total" type="number" inputmode="decimal" min="0" step="0.01" aria-label="合计数值至少" value="${Number(condition.minTotal ?? defaults.minTotal)}">
+        <button class="button button-secondary global-remove-condition" type="button" aria-label="删除全局条件">×</button>
+      `;
+      const statSelect = row.querySelector(".global-stat-select");
+      const minCountInput = row.querySelector(".global-min-count");
+      const minTotalInput = row.querySelector(".global-min-total");
+      statSelect.value = initialStat;
+      statSelect.addEventListener("change", () => {
+        const nextDefaults = GLOBAL_STAT_DEFAULTS[statSelect.value] || { minCount: 1, minTotal: 0 };
+        minCountInput.value = String(nextDefaults.minCount);
+        minTotalInput.value = String(nextDefaults.minTotal);
+        syncGlobalStatOptions();
+        globalTargetPresetSelect.value = "";
+        clearGlobalPlanOutputs();
+      });
+      row.querySelectorAll("input").forEach(control => {
+        control.addEventListener("change", () => {
+          globalTargetPresetSelect.value = "";
+          clearGlobalPlanOutputs();
+        });
+      });
+      row.querySelector(".global-remove-condition").addEventListener("click", () => {
+        row.remove();
+        if (!globalConditionRows.children.length) addGlobalCondition();
+        syncGlobalStatOptions();
+        globalTargetPresetSelect.value = "";
+        clearGlobalPlanOutputs();
+      });
+      globalConditionRows.append(row);
+      syncGlobalStatOptions();
+    }
+
+    function resetGlobalConditions() {
+      globalConditionRows.replaceChildren();
+      GLOBAL_DEFAULT_CONDITIONS.forEach(condition => addGlobalCondition(condition));
+      globalTargetPresetSelect.value = "";
+      globalTargetStatus.textContent = "全局模式会自动分配四件装备的目标和档位。";
+    }
+
+    function applyGlobalTargetPreset(presetName) {
+      const conditions = GLOBAL_TARGET_PRESETS[presetName];
+      if (!conditions) return;
+      globalConditionRows.replaceChildren();
+      conditions.forEach(condition => addGlobalCondition(condition));
+      globalTargetPresetSelect.value = presetName;
+      clearGlobalPlanOutputs();
+      globalTargetStatus.textContent = "已应用全局目标预设，请开始计算。";
+      showMessage("");
+    }
+
+    function setCalculationMode(mode) {
+      const useGlobalMode = mode === "global" && characterSelect.value !== "current";
+      calculationModeSelect.value = useGlobalMode ? "global" : "equipment";
+      globalTargetMode.hidden = !useGlobalMode;
+      targetPresetSelect.hidden = useGlobalMode || characterSelect.value === "current";
+      globalTargetPresetSelect.hidden = !useGlobalMode || characterSelect.value === "current";
+      characterEquipmentMode.querySelectorAll(".fixed-target-block").forEach(block => {
+        block.hidden = useGlobalMode;
+      });
+      characterEquipmentMode.querySelectorAll(".global-assignment-block").forEach(block => {
+        block.hidden = !useGlobalMode;
+      });
+
+      if (useGlobalMode) {
+        setupDescription.textContent = "设置跨四件装备的最低条数、合计数值和总目标词条数。";
+        clearGlobalPlanOutputs();
+      } else {
+        setupDescription.textContent = "词条不可重复；选择词条后，档位默认设为第 10 档。";
+        if (characterSelect.value !== "current") {
+          setResult("设置四件装备的目标词条后，点击“开始计算”。可勾选“不跑”跳过单件装备。", true);
+        }
+      }
+      showMessage("");
+    }
+
+    function findTierForPercent(statName, percent) {
+      const values = STAT_TIER_VALUES[statName] || [];
+      if (!values.length || !Number.isFinite(percent)) return 0;
+      let closestTier = 0;
+      let closestDifference = Infinity;
+      values.forEach((value, index) => {
+        const difference = Math.abs(Number.parseFloat(value) - percent);
+        if (difference < closestDifference) {
+          closestDifference = difference;
+          closestTier = index + 1;
+        }
+      });
+      return closestDifference <= 0.06 ? closestTier : 0;
+    }
+
+
+
+    function syncRecommendationSelectorVisibility() { recommendationSelect.hidden = true; recommendationSelect.disabled = true; }
+
+    function refreshCharacterSelect() {
+      recommendationSelect.hidden = true;
+      const four = collectionSelect.value === MANUAL_FOUR_EQUIPMENT_COLLECTION_ID;
+      characterSelect.replaceChildren(new Option(four ? '四装备全局模拟' : '单装备模拟', four ? MANUAL_FOUR_EQUIPMENT_COLLECTION_ID : 'current'));
+      characterSelect.value = four ? MANUAL_FOUR_EQUIPMENT_COLLECTION_ID : 'current';
+      characterSelect.hidden = true;
+      if (four) showCharacterEquipmentMode(manualFourEquipmentCharacter); else showClassicEquipmentMode();
+    }
+
+
+
+    function populateUnsyncedSelectors() {
+
+      const collectionFragment = document.createDocumentFragment();
+      const singleEquipmentOption = document.createElement("option");
+      singleEquipmentOption.value = SINGLE_EQUIPMENT_COLLECTION_ID;
+      singleEquipmentOption.textContent = "单装备模拟";
+      collectionFragment.append(singleEquipmentOption);
+      const manualFourEquipmentOption = document.createElement("option");
+      manualFourEquipmentOption.value = MANUAL_FOUR_EQUIPMENT_COLLECTION_ID;
+      manualFourEquipmentOption.textContent = "四装备全局模拟";
+      collectionFragment.append(manualFourEquipmentOption);
+      collectionSelect.replaceChildren(collectionFragment);
+      collectionSelect.value = SINGLE_EQUIPMENT_COLLECTION_ID;
+
+      const recommendationPlaceholder = document.createElement("option");
+      recommendationPlaceholder.value = "";
+      recommendationPlaceholder.textContent = "推荐方案";
+      recommendationPlaceholder.disabled = true;
+      recommendationSelect.replaceChildren(recommendationPlaceholder);
+      recommendationSelect.value = "";
+      syncRecommendationSelectorVisibility();
+      refreshCharacterSelect();
+    }
+
+
+
+
+
+
+
+    function fillRows(container, lines) {
+      const rows = [...container.querySelectorAll(".form-row")];
+      rows.forEach((row, index) => {
+        const line = lines[index];
+        const statSelect = row.querySelector(".stat-select");
+        const tierSelect = row.querySelector(".tier-select");
+        const flagInput = row.querySelector(".flag-input");
+        const forceKeepButton = row.querySelector(".force-retain-toggle");
+
+        statSelect.value = line?.stat && STAT_NAMES.includes(line.stat) ? line.stat : "空词条";
+        updateTierOptions(statSelect, tierSelect);
+        if (line?.tier && tierSelect.querySelector(`option[value="${line.tier}"]`)) {
+          tierSelect.value = String(line.tier);
+        }
+        flagInput.checked = Boolean(line?.locked);
+        if (forceKeepButton) {
+          setForceRetention(forceKeepButton, Boolean(line?.forceKeep));
+          syncForceRetentionAvailability(row);
+        }
+      });
+      syncEquipmentStatOptions(container);
+    }
+
+    function characterExactSolutionCacheKey(characterKey, mode, equipmentIndex, calculationRule = selectedCalculationRule()) {
+      return `${characterKey}::${mode}::${calculationRule}::${equipmentIndex}`;
+    }
+
+    function cacheCharacterExactSolutions(characterKey, mode, equipmentResults) {
+      const prefix = `${characterKey}::`;
+      [...characterExactSolutionCache.keys()].forEach(key => {
+        if (key.startsWith(prefix)) characterExactSolutionCache.delete(key);
+      });
+      (equipmentResults || []).forEach((item, fallbackIndex) => {
+        if (item?.skipped || !item?.exactSolution) return;
+        const equipmentIndex = Number(item.index ?? fallbackIndex);
+        characterExactSolutionCache.set(
+          characterExactSolutionCacheKey(characterKey, mode, equipmentIndex),
+          item.exactSolution,
+        );
+      });
+    }
+
+    function cachedCharacterExactSolution(characterKey, mode, equipmentIndex) {
+      return characterExactSolutionCache.get(
+        characterExactSolutionCacheKey(characterKey, mode, equipmentIndex),
+      );
+    }
+
+    function restoreCharacterRunRecord(character) {
+      const characterKey = String(character?.key || `character::${character?.name || ""}`);
+      const record = runRecordStore.entries[characterKey];
+      if (!record || record.calculationRule !== selectedCalculationRule()) return false;
+
+      targetPresetSelect.value = "";
+      setCalculationMode(record.mode === "global" ? "global" : "equipment");
+
+      const resultByIndex = new Map(
+        (record.equipmentResults || []).map(item => [Number(item.index), item]),
+      );
+      const equipmentConfigs = record.targetConfig?.equipments || [];
+      equipmentConfigs.forEach((config, index) => {
+        const section = characterEquipmentMode.querySelector(`[data-equipment-index="${index}"]`);
+        if (!section) return;
+        const skipInput = section.querySelector(".equipment-skip-input");
+        skipInput.checked = Boolean(config.skipped);
+        setEquipmentSkipped(section, skipInput.checked);
+        if (record.mode !== "global") {
+          fillRows(section.querySelector(".equipment-target-rows"), config.targets || []);
+        }
+
+        const savedEquipment = resultByIndex.get(index);
+        const cachedSolution = cachedCharacterExactSolution(characterKey, record.mode, index);
+        const output = section.querySelector(".equipment-optimal-result");
+        if (cachedSolution && !skipInput.checked) {
+          renderInlineOptimalResult(output, cachedSolution);
+        } else {
+          setInlineOptimalResult(
+            output,
+            savedEquipment?.optimalText || (skipInput.checked ? "本次已跳过。" : "开始计算后显示。"),
+            !savedEquipment,
+          );
+        }
+        if (record.mode === "global") {
+          section.querySelector(".global-assignment-output").textContent = skipInput.checked
+            ? "本次已跳过。"
+            : globalAssignmentText(savedEquipment?.targets || []);
+        }
+      });
+
+      if (record.mode === "global") {
+        globalConditionRows.replaceChildren();
+        (record.targetConfig?.conditions || GLOBAL_DEFAULT_CONDITIONS)
+          .forEach(condition => addGlobalCondition(condition));
+        globalTargetStatus.textContent = "已恢复该妮姬最后一次成功运行的全局条件与最优结果。";
+      }
+
+      setResult(record.resultText || "已恢复最后一次测试结果。", false);
+      setDetails(record.detailsText || defaultDetails());
+      activateOutputTab("result");
+      return true;
+    }
+
+    function renderCharacterEquipment(character) {
+
+      characterEquipmentMode.innerHTML = character.equipments.map((equipment, index) => `
+        <section class="character-equipment-slot" data-equipment-index="${index}">
+          <div class="equipment-slot-heading">
+            <h3>${escapeHtml(equipment.label)}</h3>
+            <div class="equipment-slot-actions">
+              <label class="equipment-skip-label">
+                <input class="equipment-skip-input" type="checkbox">
+                不跑
+              </label>
+            </div>
+          </div>
+          <div class="equipment-editor-block">
+            <h4 class="equipment-block-title">当前词条</h4>
+            <div class="rows equipment-current-rows"></div>
+          </div>
+          <div class="equipment-editor-block fixed-target-block">
+            <h4 class="equipment-block-title">目标词条池</h4>
+            <div class="rows equipment-target-rows"></div>
+          </div>
+          <div class="equipment-editor-block global-assignment-block" hidden>
+            <h4 class="equipment-block-title">算法分配目标</h4>
+            <pre class="global-assignment-output">运行全局测试后显示。</pre>
+          </div>
+          <div class="equipment-editor-block equipment-result-block">
+            <h4 class="equipment-block-title">最优结果</h4>
+            <div class="inline-optimal-result empty-result equipment-optimal-result" aria-live="polite">开始计算后显示。</div>
+          </div>
+        </section>
+      `).join("");
+
+      character.equipments.forEach((equipment, index) => {
+        const section = characterEquipmentMode.querySelector(`[data-equipment-index="${index}"]`);
+        const currentRows = section.querySelector(".equipment-current-rows");
+        const equipmentTargetRows = section.querySelector(".equipment-target-rows");
+        createRows(currentRows, 3, "initial");
+        createRows(equipmentTargetRows, 5, "target");
+        fillRows(currentRows, equipment.lines);
+        const skipInput = section.querySelector(".equipment-skip-input");
+        skipInput.addEventListener("change", () => {
+          setEquipmentSkipped(section, skipInput.checked);
+          setInlineOptimalResult(
+            section.querySelector(".equipment-optimal-result"),
+            skipInput.checked ? "本次已跳过。" : "开始计算后显示。",
+            true
+          );
+          if (calculationModeSelect.value === "global") clearGlobalPlanOutputs();
+        });
+      });
+    }
+
+    function renderEquipmentEffectOverview() {
+      const visible = showEquipmentEffectOverview && !characterEquipmentMode.hidden;
+      equipmentEffectOverview.hidden = !visible;
+      if (!visible) {
+        equipmentEffectOverviewValues.replaceChildren();
+        return;
+      }
+
+      const currentLines = [...characterEquipmentMode.querySelectorAll(".equipment-current-rows")]
+        .flatMap(container => readRows(container));
+      const summary = summarizeEquipmentEffects(currentLines, STAT_TIER_VALUES);
+      equipmentEffectOverviewValues.innerHTML = summary.map(item => `
+        <span class="equipment-effect-item">
+          <span class="equipment-effect-name">${escapeHtml(item.stat)}</span>
+          <strong class="equipment-effect-value">${item.formattedValue}</strong>
+        </span>
+      `).join("");
+    }
+
+    function setInlineOptimalResult(element, text, isEmpty = false) {
+      if (!element) return;
+      element.textContent = text;
+      element.classList.toggle("empty-result", isEmpty);
+    }
+
+    function exactBranchStateText(state, model) {
+      if (!state?.slots) return "盘面状态不可用";
+      return state.slots.map((slot, index) => {
+        let name = slot.statName || "非目标词条";
+        if (isTargetCode(slot.code)) {
+          name = model.targets[targetIndexFromCode(slot.code)]?.name || "目标词条";
+          name += slot.ok ? "（达标）" : "（未达标）";
+        }
+        const locked = slot.locked ? " · 已锁" : "";
+        return `词条${index + 1}：${name}${locked}`;
+      }).join("；");
+    }
+
+    function exactBranchConditionRows(state, model) {
+      if (!state?.slots) {
+        return Array.from({ length: 3 }, (_, index) => ({
+          position: `词条${index + 1}`,
+          result: "状态不可用",
+          target: false,
+        }));
+      }
+      return state.slots.map((slot, index) => {
+        const target = isTargetCode(slot.code);
+        let result = slot.statName || "非目标/空词条";
+        if (target) {
+          result = model.targets[targetIndexFromCode(slot.code)]?.name || "目标词条";
+          result += slot.ok ? " · 达标" : " · 未达标";
+        }
+        if (slot.locked) result += " · 已锁";
+        return { position: `词条${index + 1}`, result, target };
+      });
+    }
+
+    function mergeEquivalentTerminalBranches(branches, model) {
+      const merged = [];
+      const terminalByState = new Map();
+      branches.forEach(branch => {
+        if (!branch.terminal) {
+          merged.push(branch);
+          return;
+        }
+        const stateText = exactBranchStateText(branch.state, model);
+        const existing = terminalByState.get(stateText);
+        if (existing) {
+          existing.probability += branch.probability;
+          existing.mergedStates.push(branch.state);
+          return;
+        }
+        const copy = { ...branch, mergedStates: [branch.state] };
+        terminalByState.set(stateText, copy);
+        merged.push(copy);
+      });
+      return merged.sort((left, right) => right.probability - left.probability);
+    }
+
+    function policyProbabilityText(probability) {
+      return `${(probability * 100).toFixed(probability < 0.01 ? 2 : 1)}%`;
+    }
+
+    function branchConditionTable(rows) {
+      const body = rows.map(row => `
+        <tr>
+          <th scope="row">${escapeHtml(row.position)}</th>
+          <td class="${row.target ? "is-target" : "is-empty"}">${escapeHtml(row.result)}</td>
+        </tr>
+      `).join("");
+      return `<table class="policy-condition-table" aria-label="分支触发条件"><tbody>${body}</tbody></table>`;
+    }
+
+    function policyBranchCopy({ probability, conditionHtml, actionText, detail }) {
+      return `<span class="policy-branch-probability">${policyProbabilityText(probability)}</span><span class="policy-branch-copy"><span class="policy-branch-condition">${conditionHtml}</span><strong class="policy-branch-action">${actionText}</strong><small>${detail}</small></span>`;
+    }
+
+    function policyTreeStageElement(exactSolution, stateIndex, depth, ancestorIndexes) {
+      const policyData = exactSolution.policyData;
+      const stageInput = {
+        records: policyData.records,
+        policy: policyData.policy,
+        values: policyData.values,
+        startIndex: stateIndex,
+        describeAction: exactActionDescription,
+      };
+      const candidateStage = exactSolution.calculationRule === CALCULATION_RULES.GLOBAL_CURRENT
+        ? createCandidateDecisionStage(stageInput)
+        : null;
+      const stage = candidateStage || createPolicyBranchStage(stageInput);
+      const isCandidateStage = Boolean(candidateStage);
+      const wrap = document.createElement("div");
+      wrap.className = "policy-stage";
+      if (!stage) {
+        wrap.textContent = "该分支暂时无法展开。";
+        return wrap;
+      }
+      if (stage.terminal) {
+        wrap.classList.add("policy-stage-complete");
+        wrap.textContent = "目标已经完成，无需继续操作。";
+        return wrap;
+      }
+
+      const heading = document.createElement("div");
+      heading.className = "policy-stage-heading";
+      const stageActionText = compactStageActionText(stage.actionText);
+      const stageCostText = isCandidateStage
+        ? `单次 ${stage.singleCost} 颗 · 进入新分支前约 ${stage.expectedAttempts.toFixed(1)} 次 / ${stage.stageExpectedCost.toFixed(1)} 颗 · 从此处完成约 ${stage.totalExpectedCost.toFixed(1)} 颗`
+        : `本阶段约 ${stage.stageExpectedCost.toFixed(1)} 颗 · 从此处完成约 ${stage.totalExpectedCost.toFixed(1)} 颗`;
+      heading.innerHTML = `<strong>本阶段：${stageActionText}</strong><span>${stageCostText}</span>`;
+      wrap.append(heading);
+
+      const note = document.createElement("p");
+      note.className = "policy-stage-note";
+      note.textContent = isCandidateStage
+        ? "以下仅列出会进入新状态的单次洗练结果；未列出的结果不会改变盘面，需要重复本阶段。"
+        : "以下概率表示反复执行本阶段操作后，最终进入各分支的概率。";
+      wrap.append(note);
+
+      const list = document.createElement("div");
+      list.className = "policy-branch-list";
+      mergeEquivalentTerminalBranches(stage.branches, exactSolution.model).forEach(branch => {
+        const conditionRows = isCandidateStage
+          ? candidateBranchConditionRows(exactSolution, stateIndex, branch)
+          : exactBranchConditionRows(branch.state, exactSolution.model);
+        const conditionHtml = branchConditionTable(conditionRows);
+        const actionText = branch.terminal
+          ? "目标完成"
+          : compactStageActionText(branch.nextActionText);
+        const detail = branch.terminal
+          ? "无需继续消耗"
+          : `从该分支完成约 ${branch.remainingExpectedCost.toFixed(1)} 颗石头`;
+        if (branch.terminal) {
+          const complete = document.createElement("div");
+          complete.className = "policy-branch policy-branch-complete";
+          complete.innerHTML = `<div class="policy-branch-static">${policyBranchCopy({
+            probability: branch.probability,
+            conditionHtml,
+            actionText,
+            detail,
+          })}</div>`;
+          list.append(complete);
+          return;
+        }
+
+        const details = document.createElement("details");
+        details.className = "policy-branch";
+        const summary = document.createElement("summary");
+        summary.innerHTML = policyBranchCopy({
+          probability: branch.probability,
+          conditionHtml,
+          actionText,
+          detail,
+        });
+        details.append(summary);
+
+        details.addEventListener("toggle", () => {
+          if (!details.open || details.dataset.loaded === "true") return;
+          details.dataset.loaded = "true";
+          if (depth >= 10 || ancestorIndexes.has(branch.stateIndex)) {
+            const cycle = document.createElement("p");
+            cycle.className = "policy-stage-note";
+            cycle.textContent = "该分支会回到已显示的策略状态，请继续按上方相同操作执行。";
+            details.append(cycle);
+            return;
+          }
+          const nextAncestors = new Set(ancestorIndexes);
+          nextAncestors.add(branch.stateIndex);
+          details.append(policyTreeStageElement(exactSolution, branch.stateIndex, depth + 1, nextAncestors));
+        });
+        list.append(details);
+      });
+      wrap.append(list);
+      return wrap;
+    }
+
+    function renderInlineOptimalResult(element, exactSolution) {
+      if (!element) return;
+      const expectedCost = exactSolution?.value ?? 0;
+      if (!exactSolution?.policyData || expectedCost <= 1e-9) {
+        setInlineOptimalResult(element, inlineOptimalResultText({ exactSolution }));
+        return;
+      }
+      element.replaceChildren();
+      element.classList.remove("empty-result");
+
+      const text = document.createElement("div");
+      text.className = "inline-optimal-result-text";
+      text.textContent = inlineOptimalResultText({ exactSolution });
+      element.append(text);
+
+      const tree = document.createElement("details");
+      tree.className = "policy-tree";
+      const treeSummary = document.createElement("summary");
+      treeSummary.textContent = "查看完整决策树";
+      tree.append(treeSummary);
+      tree.addEventListener("toggle", () => {
+        if (!tree.open || tree.dataset.loaded === "true") return;
+        tree.dataset.loaded = "true";
+        tree.append(policyTreeStageElement(
+          exactSolution,
+          exactSolution.policyData.startIndex,
+          0,
+          new Set([exactSolution.policyData.startIndex]),
+        ));
+      });
+      element.append(tree);
+    }
+
+    function compactStageActionText(text) {
+      return text
+        .replace(/(\d+)号位/g, "词条$1")
+        .replace(/锁定\s+/g, "锁定")
+        .replace(/强制保留\s+/g, "强制保留")
+        .replace("洗词条名称", "洗名称");
+    }
+
+    function formatTierRanges(tiers) {
+      const sorted = [...new Set(tiers)].sort((left, right) => left - right);
+      if (!sorted.length) return "";
+      const ranges = [];
+      let start = sorted[0];
+      let end = sorted[0];
+      sorted.slice(1).forEach(tier => {
+        if (tier === end + 1) {
+          end = tier;
+          return;
+        }
+        ranges.push(start === end ? `${start}档` : `${start}-${end}档`);
+        start = tier;
+        end = tier;
+      });
+      ranges.push(start === end ? `${start}档` : `${start}-${end}档`);
+      return ranges.join("、");
+    }
+
+    function selectedPolicyAction(exactSolution, stateIndex) {
+      const policyData = exactSolution.policyData;
+      const record = policyData?.records?.[stateIndex];
+      const actionIndex = policyData?.policy?.[stateIndex] ?? -1;
+      return actionIndex >= 0 ? record?.actions?.[actionIndex] || null : null;
+    }
+
+    function candidateTierValues(exactSolution, candidateSlot) {
+      if (!isTargetCode(candidateSlot.code)) return [];
+      const target = exactSolution.model.targets[targetIndexFromCode(candidateSlot.code)];
+      const tiers = [];
+      TIER_PROBS.forEach((weight, index) => {
+        const tier = index + 1;
+        if (weight === candidateSlot.tierWeight && (tier >= target.minimumTier) === candidateSlot.ok) {
+          tiers.push(tier);
+        }
+      });
+      return tiers;
+    }
+
+    function candidateBranchConditionRows(exactSolution, stateIndex, branch) {
+      const policyData = exactSolution.policyData;
+      const currentState = policyData.records[stateIndex]?.state;
+      const action = selectedPolicyAction(exactSolution, stateIndex);
+      if (!currentState || !action) {
+        return exactBranchConditionRows(branch.state, exactSolution.model);
+      }
+
+      const candidateStates = branch.mergedStates || [branch.state];
+      return currentState.slots.map((_, slotIndex) => {
+        const groups = new Map();
+        candidateStates.forEach(candidateState => {
+          const candidateSlot = candidateState?.slots?.[slotIndex];
+          if (!candidateSlot) return;
+          if (!isTargetCode(candidateSlot.code)) {
+            groups.set("X", { label: "非目标/空词条", tiers: new Set(), target: false });
+            return;
+          }
+          const target = exactSolution.model.targets[targetIndexFromCode(candidateSlot.code)];
+          const group = groups.get(candidateSlot.code) || {
+            label: target.name,
+            tiers: new Set(),
+            target: true,
+          };
+          candidateTierValues(exactSolution, candidateSlot).forEach(tier => group.tiers.add(tier));
+          groups.set(candidateSlot.code, group);
+        });
+        const values = [...groups.values()];
+        let result = values.map(group => {
+          const tiers = formatTierRanges(group.tiers);
+          return tiers ? `${group.label} · ${tiers}` : group.label;
+        }).join(" 或 ") || "结果不可用";
+        if (candidateStates.some(candidateState => candidateState?.slots?.[slotIndex]?.locked)) {
+          result += " · 已锁";
+        }
+        return {
+          position: `词条${slotIndex + 1}`,
+          result,
+          target: values.some(group => group.target),
+        };
+      });
+    }
+
+    function inlineOptimalResultText({ exactSolution }) {
+      const expectedCost = exactSolution?.value ?? 0;
+      if (expectedCost <= 1e-9) return "当前盘面已经满足目标，无需消耗石头。";
+      return `${compactStageActionText(exactSolution.firstActionText)}（约 ${expectedCost.toFixed(1)} 颗石头）`;
+    }
+
+    function clearScopedOptimalResult(control) {
+      const section = control.closest(".character-equipment-slot");
+      if (section) {
+        const skipped = section.querySelector(".equipment-skip-input")?.checked;
+        setInlineOptimalResult(
+          section.querySelector(".equipment-optimal-result"),
+          skipped ? "本次已跳过。" : "开始计算后显示。",
+          true
+        );
+        if (calculationModeSelect.value === "global") {
+          section.querySelector(".global-assignment-output").textContent = "运行全局测试后显示。";
+          globalTargetStatus.textContent = "当前盘面已更改，请重新开始计算。";
+        }
+        return;
+      }
+      setInlineOptimalResult(classicOptimalResult, "开始计算后显示。", true);
+    }
+
+    function applyTargetPreset(presetName) {
+      const stats = TARGET_PRESETS[presetName];
+      if (!stats) return;
+
+      characterEquipmentMode.querySelectorAll(".character-equipment-slot").forEach(section => {
+        const equipmentTargetRows = section.querySelector(".equipment-target-rows");
+        fillRows(equipmentTargetRows, stats.map(stat => ({ stat, tier: 10, locked: true })));
+        const skipInput = section.querySelector(".equipment-skip-input");
+        setEquipmentSkipped(section, skipInput.checked);
+        clearScopedOptimalResult(section);
+      });
+      showMessage("");
+    }
+
+    function setEquipmentSkipped(section, skipped) {
+      section.classList.toggle("is-skipped", skipped);
+      section.querySelectorAll(".form-row select, .form-row input, .form-row button").forEach(control => {
+        if (skipped) {
+          control.disabled = true;
+          return;
+        }
+        if (control.classList.contains("tier-select")) {
+          const statSelect = control.closest(".form-row").querySelector(".stat-select");
+          control.disabled = statSelect.value === "空词条";
+        } else {
+          control.disabled = false;
+        }
+      });
+    }
+
+    function showClassicEquipmentMode() {
+      hideCharacterAdvice();
+      document.body.classList.remove("character-layout-active");
+      app.classList.remove("character-layout");
+      classicEquipmentMode.hidden = false;
+      classicOptimalResultSection.hidden = false;
+      allResultsTab.hidden = true;
+      if (allResultsTab.getAttribute("aria-selected") === "true") activateOutputTab("result");
+      characterEquipmentMode.hidden = true;
+      showEquipmentEffectOverview = false;
+      renderEquipmentEffectOverview();
+      characterEquipmentMode.replaceChildren();
+      calculationModeSelect.hidden = true;
+      targetPresetSelect.hidden = true;
+      targetPresetSelect.value = "";
+      globalTargetPresetSelect.hidden = true;
+      globalTargetPresetSelect.value = "";
+      globalTargetMode.hidden = true;
+      setCalculationMode("equipment");
+      calculateButton.disabled = false;
+      showMessage("");
+    }
+
+    function showCharacterEquipmentMode(character) {
+      updateCharacterAdvice(character);
+      renderCharacterEquipment(character);
+      document.body.classList.add("character-layout-active");
+      app.classList.add("character-layout");
+      classicEquipmentMode.hidden = true;
+      classicOptimalResultSection.hidden = true;
+      allResultsTab.hidden = false;
+      characterEquipmentMode.hidden = false;
+      showEquipmentEffectOverview = !character.transient;
+      renderEquipmentEffectOverview();
+      calculationModeSelect.hidden = false;
+      targetPresetSelect.value = "";
+      globalTargetPresetSelect.value = "";
+      setCalculationMode("global");
+      calculateButton.disabled = false;
+      showMessage("");
+      if (character.transient || !restoreCharacterRunRecord(character)) {
+        setResult("设置四件装备的目标词条后，点击“开始计算”。可勾选“不跑”跳过单件装备。", true);
+        setDetails(defaultDetails());
+      }
+    }
+
+    function createRows(container, count, type) {
+      const isInitial = type === "initial";
+      container.innerHTML = Array.from({ length: count }, (_, index) => `
+        <div class="form-row" data-row="${index}">
+          ${isInitial
+            ? `<button class="row-number force-retain-toggle" type="button" aria-pressed="false" aria-label="强制保留第 ${index + 1} 个当前词条" title="点击后，算法会锁定并保留此词条">${index + 1}</button>`
+            : `<span class="row-number" aria-hidden="true">${index + 1}</span>`}
+          <select class="stat-select" aria-label="${isInitial ? "当前" : "目标"}第 ${index + 1} 个词条">
+            ${optionsHtml(STAT_NAMES)}
+          </select>
+          <select class="tier-select" aria-label="${isInitial ? "当前" : "目标"}第 ${index + 1} 个档位" disabled>
+            <option value="0">空</option>
+          </select>
+          <label class="check-label">
+            <input class="flag-input" type="checkbox">
+            ${isInitial ? "已锁" : "必选"}
+          </label>
+        </div>
+      `).join("");
+
+      container.querySelectorAll(".form-row").forEach(row => {
+        const statSelect = row.querySelector(".stat-select");
+        const tierSelect = row.querySelector(".tier-select");
+        statSelect.addEventListener("change", () => {
+          updateTierOptions(statSelect, tierSelect);
+          if (isInitial) syncForceRetentionAvailability(row);
+          syncEquipmentStatOptions(container);
+          clearScopedOptimalResult(statSelect);
+          if (isInitial) renderEquipmentEffectOverview();
+        });
+        tierSelect.addEventListener("change", () => {
+          clearScopedOptimalResult(tierSelect);
+          if (isInitial) renderEquipmentEffectOverview();
+        });
+      });
+
+      if (!isInitial) {
+        container.querySelectorAll(".flag-input").forEach(checkbox => {
+          checkbox.addEventListener("change", () => {
+            enforceMandatoryLimit(checkbox);
+            clearScopedOptimalResult(checkbox);
+          });
+        });
+      } else {
+        container.querySelectorAll(".flag-input").forEach(checkbox => {
+          checkbox.addEventListener("change", () => clearScopedOptimalResult(checkbox));
+        });
+        container.querySelectorAll(".force-retain-toggle").forEach(button => {
+          button.addEventListener("click", () => {
+            setForceRetention(button, button.getAttribute("aria-pressed") !== "true");
+            clearScopedOptimalResult(button);
+          });
+        });
+      }
+      syncEquipmentStatOptions(container);
+    }
+
+    function syncEquipmentStatOptions(container) {
+      if (!container) return;
+      const rows = [...container.querySelectorAll(".form-row")];
+      const selectedStats = rows.map(row => row.querySelector(".stat-select")?.value || "空词条");
+      rows.forEach((row, rowIndex) => {
+        const statSelect = row.querySelector(".stat-select");
+        const unavailableStats = unavailableStatsForRow(selectedStats, rowIndex);
+        [...statSelect.options].forEach(option => {
+          option.disabled = option.value !== "空词条" && unavailableStats.has(option.value);
+        });
+      });
+    }
+
+    function setForceRetention(button, forceKeep) {
+      if (!button) return;
+      button.setAttribute("aria-pressed", String(Boolean(forceKeep)));
+      button.title = forceKeep
+        ? "已强制保留；再次点击取消"
+        : "点击后，算法会锁定并保留此词条";
+    }
+
+    function syncForceRetentionAvailability(row) {
+      const button = row.querySelector(".force-retain-toggle");
+      if (!button) return;
+      const isEmpty = row.querySelector(".stat-select")?.value === "空词条";
+      button.disabled = isEmpty;
+      if (isEmpty) setForceRetention(button, false);
+    }
+
+    function updateTierOptions(statSelect, tierSelect) {
+      const values = STAT_TIER_VALUES[statSelect.value];
+      if (!values) {
+        tierSelect.innerHTML = '<option value="0">空</option>';
+        tierSelect.disabled = true;
+        return;
+      }
+
+      tierSelect.innerHTML = values.map((value, index) =>
+        `<option value="${index + 1}">[${index + 1}档] ${value}</option>`
+      ).join("");
+      tierSelect.disabled = false;
+      tierSelect.value = "10";
+    }
+
+    function enforceMandatoryLimit(changedCheckbox) {
+      const rowsContainer = changedCheckbox.closest(".rows") || targetRows;
+      const checked = [...rowsContainer.querySelectorAll(".flag-input:checked")];
+      if (checked.length > 3) {
+        changedCheckbox.checked = false;
+        showMessage("必选词条不能超过 3 个。", true);
+      } else {
+        showMessage("");
+      }
+    }
+
+    function showMessage(text, tone = "default") {
+      message.textContent = text;
+      message.style.color = tone === true || tone === "error"
+        ? "var(--error)"
+        : tone === "success"
+          ? "var(--success)"
+          : "var(--muted)";
+    }
+
+    function setResult(text, isEmpty = false) {
+      result.textContent = text;
+      result.classList.toggle("empty-result", isEmpty);
+    }
+
+    function setDetails(text) {
+      details.textContent = text;
+    }
+
+    function activateOutputTab(tabName, focus = false) {
+      const tabs = [
+        { name: "result", tab: resultTab, panel: resultPanel },
+        { name: "details", tab: detailsTab, panel: detailsPanel },
+        { name: "all", tab: allResultsTab, panel: allResultsPanel },
+      ];
+      const availableTabs = tabs.filter(item => !item.tab.hidden);
+      const active = availableTabs.find(item => item.name === tabName) || availableTabs[0] || tabs[0];
+      tabs.forEach(item => {
+        const selected = item === active;
+        item.tab.setAttribute("aria-selected", String(selected));
+        item.tab.tabIndex = selected ? 0 : -1;
+        item.panel.hidden = !selected;
+      });
+      if (focus) active.tab.focus();
+    }
+
+    function resetAll() {
+      [...document.querySelectorAll(".form-row")].forEach(row => {
+        row.querySelector(".stat-select").value = "空词条";
+        const tier = row.querySelector(".tier-select");
+        tier.innerHTML = '<option value="0">空</option>';
+        tier.disabled = true;
+        row.querySelector(".flag-input").checked = false;
+        setForceRetention(row.querySelector(".force-retain-toggle"), false);
+        syncForceRetentionAvailability(row);
+      });
+      document.querySelectorAll(".rows").forEach(syncEquipmentStatOptions);
+      renderEquipmentEffectOverview();
+      document.querySelectorAll(".equipment-skip-input").forEach(input => {
+        input.checked = false;
+        setEquipmentSkipped(input.closest(".character-equipment-slot"), false);
+      });
+      targetPresetSelect.value = "";
+      globalTargetPresetSelect.value = "";
+      if (calculationModeSelect.value === "global") {
+        resetGlobalConditions();
+        clearGlobalPlanOutputs();
+      }
+      setInlineOptimalResult(classicOptimalResult, "开始计算后显示。", true);
+      characterEquipmentMode.querySelectorAll(".equipment-optimal-result").forEach(output => {
+        setInlineOptimalResult(output, "开始计算后显示。", true);
+      });
+      showMessage("");
+      setResult(
+        calculationModeSelect.value === "global"
+          ? "设置全局目标后，点击“开始计算”。"
+          : "设置目标词条后，点击“开始计算”。",
+        true
+      );
+      setDetails(defaultDetails());
+      activateOutputTab("result");
+    }
+
+    function handleCalculationRuleChange() {
+      calculationRuleSelect.value = selectedCalculationRule();
+      characterExactSolutionCache.clear();
+      setInlineOptimalResult(classicOptimalResult, "开始计算后显示。", true);
+      characterEquipmentMode.querySelectorAll(".equipment-optimal-result").forEach(output => {
+        setInlineOptimalResult(output, "开始计算后显示。", true);
+      });
+      characterEquipmentMode.querySelectorAll(".global-assignment-output").forEach(output => {
+        output.textContent = "运行全局测试后显示。";
+      });
+      if (calculationModeSelect.value === "global") {
+        globalTargetStatus.textContent = "计算模式已切换，请重新开始计算。";
+      }
+      setResult(`已切换为${calculationRuleLabel(selectedCalculationRule())}，请重新开始计算。`, true);
+      setDetails(defaultDetails());
+      showMessage("");
+      activateOutputTab("result");
+    }
+
+    function readRows(container) {
+      return [...container.querySelectorAll(".form-row")].map(row => ({
+        stat: row.querySelector(".stat-select").value,
+        tier: Number(row.querySelector(".tier-select").value || 0),
+        flagged: row.querySelector(".flag-input").checked,
+        forceKeep: row.querySelector(".force-retain-toggle")?.getAttribute("aria-pressed") === "true",
+      }));
+    }
+
+    function setProgress(completed, total) {
+      const percent = total ? Math.min(100, Math.round(completed / total * 100)) : 0;
+      progressBar.style.width = `${percent}%`;
+      progressTrack.setAttribute("aria-valuenow", String(percent));
+      progressText.textContent = `计算中… ${percent}%`;
+    }
+    function setCalculating(isCalculating) {
+      app.setAttribute("aria-busy", String(isCalculating));
+      [...app.querySelectorAll("button, input, select")].forEach(control => {
+        if (control === downloadAllResultsButton) return;
+        if (isCalculating) {
+          control.dataset.wasDisabled = control.disabled ? "1" : "0";
+          control.disabled = true;
+        } else {
+          control.disabled = control.dataset.wasDisabled === "1";
+          delete control.dataset.wasDisabled;
+        }
+      });
+      progressWrap.hidden = !isCalculating;
+      calculateButton.textContent = isCalculating ? "正在计算…" : "开始计算";
+      if (!isCalculating) {
+        renderRunRecords();
+      }
+    }
+    function resultHeader(targetInput, methodText, calculationRule) {
+      const candidateCount = targetInput.filter(item => item.stat !== "空词条").length;
+      const targetCount = Math.min(3, candidateCount);
+      return `最佳动作演算完毕（${calculationRuleLabel(calculationRule)}，目标数:${targetCount}条/从${candidateCount}个候选选出，${methodText}），版本号V2.81:`;
+    }
+
+    function resultFooter() {
+      return [
+        "（执行一次后，请按新的盘面重新计算下一步）",
+        "👑 伟大的皇冠王国国王为本次计算负责( ゜- ゜)",
+        "💡 钟鸣提供技术支持ヽ(`Д´)ﾉKISAMAAAAA！"
+      ].join("\n");
+    }
+
+    function buildExactResultOutput(exactSolution, targetInput) {
+      const separator = "=".repeat(40);
+      const lines = [resultHeader(targetInput, "有限状态 MDP", exactSolution.calculationRule), separator];
+      if (exactSolution.value <= 1e-9) {
+        lines.push("🎉 当前盘面已经满足全部目标，无需继续消耗石头。");
+      } else {
+        lines.push(`🔒 最佳动作 [${exactSolution.firstActionText}]：约需 ${exactSolution.value.toFixed(1)} 颗石头 👈【最佳期望策略】`);
+      }
+      lines.push(separator, resultFooter());
+      return lines.join("\n");
+    }
+    function buildDetailsOutput({ exactSolution, formulaResult }) {
+      const lines = [defaultDetails(exactSolution?.calculationRule), "", "本次计算明细", "=".repeat(36), "模型自检：通过"];
+      if (exactSolution) {
+        lines.push(
+          `有限状态 MDP 期望：${exactSolution.value.toFixed(6)} 颗石头`,
+          `当前最佳动作：${exactSolution.firstActionText}`,
+          `状态数量：${exactSolution.stateCount}；求解轮数：${exactSolution.iterations}`,
+          `Bellman 残差：${exactSolution.residual.toExponential(3)}`
+        );
+      }
+
+      if (formulaResult) {
+        const difference = exactSolution ? formulaResult.value - exactSolution.value : 0;
+        lines.push(
+          "",
+          "公式快速通道（固定两锁方案）",
+          `目标：${formulaResult.slot}号位 ${formulaResult.targetName}`,
+          `名称成功率：${(formulaResult.nameProbability * 100).toFixed(4)}%；档位成功率：${(formulaResult.tierProbability * 100).toFixed(2)}%`,
+          `锁定 ${formulaResult.lockCost.toFixed(3)} + 名称 ${formulaResult.nameCost.toFixed(3)} + 数值 ${formulaResult.valueCost.toFixed(3)}`,
+          `公式结果：${formulaResult.value.toFixed(6)}；比有限状态 MDP 多：${difference.toFixed(6)}`
+        );
+      }
+
+      lines.push(
+        "",
+        "算法说明",
+        "有限状态 MDP 枚举每次洗练的完整离散概率，并在每个盘面同时比较洗名称、洗数值和锁定动作。",
+        exactSolution?.calculationRule === CALCULATION_RULES.CN_LEGACY
+          ? "旧规则按原始概率直接覆盖每次结果，不排除相同结果，也不模拟保留原词条。"
+          : "新规则排除与当前完全相同的结果，并在每次候选出现后比较覆盖或保留原词条。"
+      );
+      return lines.join("\n");
+    }
+
+    function readCharacterEquipmentInputs() {
+      return [...characterEquipmentMode.querySelectorAll(".character-equipment-slot")].map((section, index) => ({
+        index,
+        label: EQUIPMENT_SLOT_NAMES[index] || `装备 ${index + 1}`,
+        skipped: section.querySelector(".equipment-skip-input").checked,
+        initialInput: readRows(section.querySelector(".equipment-current-rows")),
+        targetInput: readRows(section.querySelector(".equipment-target-rows"))
+      }));
+    }
+
+    function readGlobalConditionConfig(activeEquipmentCount) {
+      const rows = [...globalConditionRows.querySelectorAll(".global-condition-row")];
+      if (!rows.length) return { error: "请至少添加一个全局词条条件。" };
+
+      const conditions = [];
+      const seenStats = new Set();
+      for (const row of rows) {
+        const stat = row.querySelector(".global-stat-select").value;
+        const minCount = Number(row.querySelector(".global-min-count").value);
+        const minTotal = Number(row.querySelector(".global-min-total").value);
+        if (seenStats.has(stat)) return { error: `${stat} 重复出现，请合并成一条条件。` };
+        if (!Number.isInteger(minCount) || minCount < 0 || minCount > activeEquipmentCount) {
+          return { error: `${stat} 的至少条数应为 0～${activeEquipmentCount} 的整数。` };
+        }
+        if (!Number.isFinite(minTotal) || minTotal < 0) {
+          return { error: `${stat} 的合计数值不能小于 0。` };
+        }
+        if (minCount === 0 && minTotal === 0) {
+          return { error: `${stat} 的至少条数与合计数值不能同时为 0。` };
+        }
+        const minTotalBasis = Math.round(minTotal * 100);
+        const maximumTotalBasis = activeEquipmentCount * statTierBasisPoints(stat, 15);
+        if (minTotalBasis > maximumTotalBasis) {
+          return { error: `${stat} 在 ${activeEquipmentCount} 件装备上的理论最高合计为 ${(maximumTotalBasis / 100).toFixed(2)}%。` };
+        }
+        seenStats.add(stat);
+        conditions.push({ stat, minCount, minTotal, minTotalBasis });
+      }
+
+      const requiredLines = conditions.reduce((sum, condition) => sum + condition.minCount, 0);
+      return { conditions, requiredLines };
+    }
+
+    function globalAssignmentText(targets) {
+      if (!targets.length) return "本件装备不承担全局目标。";
+      return targets
+        .map((target, index) => `${index + 1}. ${target.stat} · [${target.tier}档] ${statTierText(target.stat, target.tier)}`)
+        .join("\n");
+    }
+
+    function buildGlobalConditionOutput(characterName, bestResult, conditions, activeEquipments, candidateCount, evaluatedCount) {
+      const separator = "=".repeat(44);
+      const lines = [
+        `${characterName} · 全局条件静态分配测试`,
+        `计算模式：${calculationRuleLabel(selectedCalculationRule())}`,
+        separator,
+        "达成目标：",
+      ];
+      conditions.forEach(condition => {
+        const assigned = bestResult.plan.targetsByEquipment.flat().filter(target => target.stat === condition.stat);
+        const totalBasis = assigned.reduce((sum, target) => sum + statTierBasisPoints(target.stat, target.tier), 0);
+        lines.push(`  ${condition.stat}：${assigned.length} 条，合计至少 ${(totalBasis / 100).toFixed(2)}%`);
+      });
+      lines.push(`  全局目标词条：${bestResult.plan.totalLines} 条`, "", "装备分配：");
+      activeEquipments.forEach((equipment, index) => {
+        const targets = bestResult.plan.targetsByEquipment[index];
+        const solution = bestResult.equipmentResults[index].exactSolution;
+        lines.push(`${equipment.label}：${targets.map(target => `${target.stat}[${target.tier}档]`).join("、") || "无需承担"}`);
+        lines.push(`  期望约 ${solution.value.toFixed(1)} 颗；建议：${solution.firstActionText}`);
+      });
+      lines.push(
+        "",
+        separator,
+        `所选静态分配合计期望：约 ${bestResult.totalExpectedCost.toFixed(1)} 颗石头`,
+        `候选池共 ${candidateCount} 个，本次使用有限状态 MDP 精算 ${evaluatedCount} 个（包含多指标初筛与通用邻域方案）。`,
+        "这是静态目标分配；每实际洗一次后，请重新导入盘面并再次计算。",
+        separator,
+        resultFooter()
+      );
+      return lines.join("\n");
+    }
+
+    function buildGlobalConditionDetails(characterName, bestResult, conditions) {
+      const lines = [
+        `${characterName} · 全局条件测试明细`,
+        `计算模式：${calculationRuleLabel(selectedCalculationRule())}`,
+        "=".repeat(38)
+      ];
+      conditions.forEach(condition => {
+        lines.push(`${condition.stat}：至少 ${condition.minCount} 条，四件合计至少 ${condition.minTotal.toFixed(2)}%。`);
+      });
+      bestResult.equipmentResults.forEach(item => {
+        lines.push(
+          "",
+          item.label,
+          "-".repeat(24),
+          globalAssignmentText(item.targets),
+          `有限状态 MDP 期望：${item.exactSolution.value.toFixed(6)} 颗石头`,
+          `当前最佳动作：${item.exactSolution.firstActionText}`,
+          `状态数量：${item.exactSolution.stateCount}；求解轮数：${item.exactSolution.iterations}`
+        );
+      });
+      lines.push(
+        "",
+        "分配方法说明",
+        "先枚举各词条在四件装备上的档位组合，以近似成本、档位均衡、超额数值和装备负载多项指标保留候选。",
+        "随后从多个候选出发，通用搜索升降档、增减目标条数、跨装备移动和满槽交换，并使用有限状态 MDP 计算真实期望。",
+        "最终结果是计算预算内找到的最低期望静态分配；不等同于不设时间上限的全空间穷举或跨装备动态策略。"
+      );
+      return lines.join("\n");
+    }
+
+    async function runGlobalConditionBatch() {
+      const calculationRule = selectedCalculationRule();
+      const allEquipments = readCharacterEquipmentInputs();
+      const activeEquipments = allEquipments.filter(item => !item.skipped);
+      const characterName = characterSelect.selectedOptions[0]?.textContent.trim() || "当前角色";
+      if (!activeEquipments.length) {
+        showMessage("四件装备都被勾选为“不跑”，请至少保留一件装备。", true);
+        return;
+      }
+
+      const config = readGlobalConditionConfig(activeEquipments.length);
+      if (config.error) {
+        showMessage(config.error, true);
+        globalTargetStatus.textContent = config.error;
+        return;
+      }
+
+      showMessage("");
+      globalTargetStatus.textContent = "正在枚举满足全局条件的装备分配…";
+      allEquipments.forEach(equipment => {
+        const section = characterEquipmentMode.querySelector(`[data-equipment-index="${equipment.index}"]`);
+        section.querySelector(".global-assignment-output").textContent = equipment.skipped ? "本次已跳过。" : "正在分配目标…";
+        setInlineOptimalResult(section.querySelector(".equipment-optimal-result"), equipment.skipped ? "本次已跳过。" : "正在计算…", true);
+      });
+      setResult("正在生成全局静态分配候选…");
+      setDetails("计算完成后，本页将显示全局条件的分配和各装备有限状态 MDP 结果。\n");
+      activateOutputTab("result");
+      setProgress(0, 100);
+      setCalculating(true);
+
+      try {
+        const { bestResult, candidateCount, evaluatedCount } = await runCalculatorWorker("global", {
+          activeEquipments, config, calculationRule,
+        }, ({ percent, text, status }) => {
+          if (status) globalTargetStatus.textContent = status;
+          if (percent !== undefined) setBatchProgress(percent, text);
+        });
+
+        const activeResultByIndex = new Map(bestResult.equipmentResults.map(item => [item.index, item]));
+        allEquipments.forEach(equipment => {
+          const section = characterEquipmentMode.querySelector(`[data-equipment-index="${equipment.index}"]`);
+          if (equipment.skipped) {
+            section.querySelector(".global-assignment-output").textContent = "本次已跳过。";
+            setInlineOptimalResult(section.querySelector(".equipment-optimal-result"), "本次已跳过。", true);
+            return;
+          }
+          const item = activeResultByIndex.get(equipment.index);
+          section.querySelector(".global-assignment-output").textContent = globalAssignmentText(item.targets);
+          renderInlineOptimalResult(section.querySelector(".equipment-optimal-result"), item.exactSolution);
+        });
+
+        setBatchProgress(100, "全局条件分配与有限状态 MDP 计算完成");
+        globalTargetStatus.textContent = `已完成：使用有限状态 MDP 比较 ${evaluatedCount} 个候选，选出合计期望最低方案。`;
+        const resultText = buildGlobalConditionOutput(
+          characterName,
+          bestResult,
+          config.conditions,
+          activeEquipments,
+          candidateCount,
+          evaluatedCount
+        );
+        const detailsText = buildGlobalConditionDetails(characterName, bestResult, config.conditions);
+        setResult(resultText);
+        setDetails(detailsText);
+        cacheCharacterExactSolutions(selectedCharacterKey(), "global", bestResult.equipmentResults);
+        await saveRunRecord(buildGlobalRunRecord({
+          characterName,
+          allEquipments,
+          bestResult,
+          conditions: config.conditions,
+          resultText,
+          detailsText,
+        }));
+        activateOutputTab("result");
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        showMessage(`全局条件计算失败：${detail}`, true);
+        globalTargetStatus.textContent = detail;
+        characterEquipmentMode.querySelectorAll(".equipment-optimal-result").forEach(output => {
+          if (output.textContent === "正在计算…") setInlineOptimalResult(output, `计算失败：${detail}`);
+        });
+        setResult(`本次全局条件测试未完成。\n\n${detail}`);
+        setDetails(defaultDetails());
+        activateOutputTab("result");
+        console.error(error);
+      } finally {
+        setCalculating(false);
+      }
+    }
+
+    function setBatchProgress(percent, text) {
+      const rounded = Math.max(0, Math.min(100, Math.round(percent)));
+      progressBar.style.width = `${rounded}%`;
+      progressTrack.setAttribute("aria-valuenow", String(rounded));
+      progressText.textContent = text;
+    }
+
+    function buildCharacterBatchOutput(characterName, equipmentResults) {
+      const separator = "=".repeat(42);
+      const lines = [
+        `${characterName} · 四件装备联合计算`,
+        `计算模式：${calculationRuleLabel(selectedCalculationRule())}`,
+        separator,
+      ];
+      let totalExpectedCost = 0;
+
+      equipmentResults.forEach(item => {
+        if (item.skipped) {
+          lines.push(`${item.label}：已勾选“不跑”，本次跳过`, "");
+          return;
+        }
+
+        const expectedCost = item.exactSolution.value;
+        totalExpectedCost += expectedCost;
+
+        let actionText;
+        if (expectedCost <= 1e-9) {
+          actionText = "当前盘面已经满足目标";
+        } else {
+          actionText = item.exactSolution.firstActionText;
+        }
+
+        lines.push(
+          `${item.label}：约需 ${expectedCost.toFixed(1)} 颗石头`,
+          `  建议：${actionText}`,
+          ""
+        );
+      });
+
+      lines.push(
+        separator,
+        `未跳过装备合计期望：约 ${totalExpectedCost.toFixed(1)} 颗石头`,
+        "（合计采用各装备有限状态 MDP 期望）",
+        separator,
+        resultFooter()
+      );
+      return lines.join("\n");
+    }
+
+    function buildCharacterBatchDetails(characterName, equipmentResults) {
+      const lines = [
+        `${characterName} · 四件装备计算明细`,
+        `计算模式：${calculationRuleLabel(selectedCalculationRule())}`,
+        "=".repeat(38)
+      ];
+
+      equipmentResults.forEach(item => {
+        lines.push("", item.label, "-".repeat(24));
+        if (item.skipped) {
+          lines.push("本次已跳过。");
+          return;
+        }
+        if (item.exactSolution) {
+          lines.push(
+            `有限状态 MDP 期望：${item.exactSolution.value.toFixed(6)} 颗石头`,
+            `当前最佳动作：${item.exactSolution.firstActionText}`,
+            `状态数量：${item.exactSolution.stateCount}；求解轮数：${item.exactSolution.iterations}`
+          );
+        }
+      });
+
+      lines.push("", "四件装备相互独立求解，总期望石头为所有未跳过装备期望值之和。");
+      return lines.join("\n");
+    }
+
+    function buildIndependentRunRecord({
+      characterName,
+      equipmentResults,
+      resultText,
+      detailsText,
+    }) {
+      const savedEquipmentResults = equipmentResults.map((item, index) => ({
+        index,
+        label: item.label,
+        skipped: Boolean(item.skipped),
+        currentLines: compactCurrentLines(item.initialInput),
+        targets: compactTargets(item.targetInput),
+        expectedCost: equipmentExpectedCost(item),
+        recommendation: equipmentRecommendation(item),
+        optimalText: item.skipped ? "本次已跳过。" : inlineOptimalResultText(item),
+      }));
+      return {
+        characterKey: selectedCharacterKey(),
+        characterName,
+        savedAt: Date.now(),
+        mode: "equipment",
+        algorithmMode: "exact",
+        calculationRule: selectedCalculationRule(),
+        targetSummary: independentTargetSummary(equipmentResults),
+        targetConfig: {
+          equipments: equipmentResults.map(item => ({
+            skipped: Boolean(item.skipped),
+            targets: compactTargets(item.targetInput),
+          })),
+        },
+        totalExpectedCost: savedEquipmentResults.reduce((sum, item) => sum + item.expectedCost, 0),
+        equipmentResults: savedEquipmentResults,
+        resultText,
+        detailsText,
+      };
+    }
+
+    function buildGlobalRunRecord({
+      characterName,
+      allEquipments,
+      bestResult,
+      conditions,
+      resultText,
+      detailsText,
+    }) {
+      const activeByIndex = new Map(
+        bestResult.equipmentResults.map(item => [Number(item.index), item]),
+      );
+      const savedEquipmentResults = allEquipments.map((equipment, index) => {
+        if (equipment.skipped) {
+          return {
+            index,
+            label: equipment.label,
+            skipped: true,
+            currentLines: compactCurrentLines(equipment.initialInput),
+            targets: [],
+            expectedCost: 0,
+            recommendation: "本次已跳过",
+            optimalText: "本次已跳过。",
+          };
+        }
+        const item = activeByIndex.get(Number(equipment.index));
+        return {
+          index,
+          label: equipment.label,
+          skipped: false,
+          currentLines: compactCurrentLines(equipment.initialInput),
+          targets: (item?.targets || []).map(target => ({
+            stat: target.stat,
+            tier: Number(target.tier || 0),
+            flagged: true,
+          })),
+          expectedCost: Number(item?.exactSolution?.value || 0),
+          recommendation: item?.exactSolution?.firstActionText || "—",
+          optimalText: item ? inlineOptimalResultText(item) : "—",
+        };
+      });
+      return {
+        characterKey: selectedCharacterKey(),
+        characterName,
+        savedAt: Date.now(),
+        mode: "global",
+        algorithmMode: "exact",
+        calculationRule: selectedCalculationRule(),
+        targetSummary: globalTargetSummary(conditions),
+        targetConfig: {
+          conditions: conditions.map(condition => ({
+            stat: condition.stat,
+            minCount: Number(condition.minCount || 0),
+            minTotal: Number(condition.minTotal || 0),
+          })),
+          equipments: allEquipments.map(item => ({ skipped: Boolean(item.skipped), targets: [] })),
+        },
+        totalExpectedCost: Number(bestResult.totalExpectedCost || 0),
+        equipmentResults: savedEquipmentResults,
+        resultText,
+        detailsText,
+      };
+    }
+
+    async function runCharacterEquipmentBatch() {
+      const calculationRule = selectedCalculationRule();
+      const allEquipments = readCharacterEquipmentInputs();
+      const activeEquipments = allEquipments.filter(item => !item.skipped);
+      const characterName = characterSelect.selectedOptions[0]?.textContent.trim() || "当前角色";
+
+      if (!activeEquipments.length) {
+        showMessage("四件装备都被勾选为“不跑”，请至少保留一件装备。", true);
+        return;
+      }
+      for (const equipment of activeEquipments) {
+        const validationError = validateInputs(equipment.initialInput, equipment.targetInput);
+        if (validationError) {
+          showMessage(`${equipment.label}：${validationError}`, true);
+          return;
+        }
+      }
+
+      showMessage("");
+      allEquipments.forEach(equipment => {
+        const output = characterEquipmentMode.querySelector(`[data-equipment-index="${equipment.index}"] .equipment-optimal-result`);
+        setInlineOptimalResult(output, equipment.skipped ? "本次已跳过。" : "正在计算…", true);
+      });
+      setResult(`正在联合计算 ${activeEquipments.length} 件装备…`);
+      setDetails("计算完成后，本页将显示每件装备的独立结果。\n");
+      activateOutputTab("result");
+      setProgress(0, 100);
+      setCalculating(true);
+
+      try {
+        const computedResults = await runCalculatorWorker("batch", { activeEquipments, calculationRule }, ({ percent, text }) => setBatchProgress(percent, text));
+        for (const item of computedResults) {
+          const output = characterEquipmentMode.querySelector(`[data-equipment-index="${item.index}"] .equipment-optimal-result`);
+          renderInlineOptimalResult(output, item.exactSolution);
+        }
+
+        const computedByLabel = new Map(computedResults.map(item => [item.label, item]));
+        const equipmentResults = allEquipments.map(item => item.skipped ? item : computedByLabel.get(item.label));
+        const resultText = buildCharacterBatchOutput(characterName, equipmentResults);
+        const detailsText = buildCharacterBatchDetails(characterName, equipmentResults);
+        setResult(resultText);
+        setDetails(detailsText);
+        cacheCharacterExactSolutions(selectedCharacterKey(), "equipment", equipmentResults);
+        await saveRunRecord(buildIndependentRunRecord({
+          characterName,
+          equipmentResults,
+          resultText,
+          detailsText,
+        }));
+        activateOutputTab("result");
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        showMessage(`四件装备计算失败：${detail}`, true);
+        characterEquipmentMode.querySelectorAll(".equipment-optimal-result").forEach(output => {
+          if (output.textContent === "正在计算…") setInlineOptimalResult(output, `计算失败：${detail}`);
+        });
+        setResult(`本次联合计算未完成。\n\n${detail}`);
+        setDetails(defaultDetails());
+        activateOutputTab("result");
+        console.error(error);
+      } finally {
+        setCalculating(false);
+      }
+    }
+
+    async function runAlgorithmTest() {
+      if (characterSelect.value !== "current") {
+        if (calculationModeSelect.value === "global") {
+          await runGlobalConditionBatch();
+        } else {
+          await runCharacterEquipmentBatch();
+        }
+        return;
+      }
+      const initialInput = readRows(initialRows);
+      const targetInput = readRows(targetRows);
+      const calculationRule = selectedCalculationRule();
+      const validationError = validateInputs(initialInput, targetInput);
+      if (validationError) {
+        showMessage(validationError, true);
+        return;
+      }
+      showMessage("");
+      setInlineOptimalResult(classicOptimalResult, "正在计算…", true);
+      setResult("正在构建算法测试…");
+      setDetails("计算完成后，本页将显示有限状态 MDP 的求解明细。");
+      activateOutputTab("result");
+      setProgress(0, 100);
+      setCalculating(true);
+
+      try {
+        const { exactSolution, formulaResult } = await runCalculatorWorker("single", { initialInput, targetInput, calculationRule }, ({ stage, current, detail }) => {
+          const percent = stage === "graph" ? 30 : 70;
+          const text = stage === "graph"
+            ? `有限状态 MDP：已检查 ${current} 个状态，当前发现 ${detail} 个状态…`
+            : `有限状态 MDP：第 ${current} 轮求解，残差 ${Number(detail).toExponential(2)}…`;
+          setBatchProgress(percent, text);
+        });
+        setResult(buildExactResultOutput(exactSolution, targetInput));
+        renderInlineOptimalResult(classicOptimalResult, exactSolution);
+        setDetails(buildDetailsOutput({ exactSolution, formulaResult }));
+        activateOutputTab("result");
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        showMessage(`算法测试失败：${detail}`, true);
+        setInlineOptimalResult(classicOptimalResult, `计算失败：${detail}`);
+        setResult(`本次算法测试未完成。\n\n${detail}`);
+        setDetails(defaultDetails());
+        activateOutputTab("result");
+        console.error(error);
+      } finally {
+        setCalculating(false);
+      }
+    }
+
+    createRows(initialRows, 3, "initial");
+    createRows(targetRows, 5, "target");
+    resetGlobalConditions();
+    setDetails(defaultDetails());
+    populateUnsyncedSelectors();
+    resultTab.addEventListener("click", () => activateOutputTab("result"));
+    detailsTab.addEventListener("click", () => activateOutputTab("details"));
+    allResultsTab.addEventListener("click", () => activateOutputTab("all"));
+    const outputTabs = [resultTab, detailsTab, allResultsTab];
+    outputTabs.forEach(tab => {
+      tab.addEventListener("keydown", event => {
+        if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+        event.preventDefault();
+        const availableTabs = outputTabs.filter(item => !item.hidden);
+        const index = availableTabs.indexOf(tab);
+        if (index < 0) return;
+        const offset = event.key === "ArrowRight" ? 1 : -1;
+        const nextIndex = (index + offset + availableTabs.length) % availableTabs.length;
+        const nextTab = availableTabs[nextIndex];
+        const nextName = nextTab === resultTab ? "result" : nextTab === detailsTab ? "details" : "all";
+        activateOutputTab(nextName, true);
+      });
+    });
+    calculationRuleSelect.addEventListener("change", handleCalculationRuleChange);
+    calculateButton.addEventListener("click", runAlgorithmTest);
+    resetButton.addEventListener("click", resetAll);
+    collectionSelect.addEventListener("change", () => {
+      recommendationSelect.value = "";
+      refreshCharacterSelect();
+    });
+    recommendationSelect.addEventListener("change", () => {
+      if (recommendationSelect.value) collectionSelect.value = DEFAULT_COLLECTION_SELECTOR_ID;
+      refreshCharacterSelect();
+    });
+    characterSelect.addEventListener("change", () => {
+      if (characterSelect.value === "current") {
+        showClassicEquipmentMode();
+        return;
+      }
+      const character = selectedCharacter();
+      if (character) showCharacterEquipmentMode(character);
+    });
+    document.addEventListener("click", event => {
+      if (characterAdvice.open && !characterAdvice.contains(event.target)) characterAdvice.open = false;
+    });
+    document.addEventListener("keydown", event => {
+      if (event.key === "Escape" && characterAdvice.open) {
+        characterAdvice.open = false;
+        characterAdvice.querySelector("summary")?.focus();
+      }
+    });
+    targetPresetSelect.addEventListener("change", () => {
+      applyTargetPreset(targetPresetSelect.value);
+    });
+    globalTargetPresetSelect.addEventListener("change", () => {
+      applyGlobalTargetPreset(globalTargetPresetSelect.value);
+    });
+    calculationModeSelect.addEventListener("change", () => {
+      setCalculationMode(calculationModeSelect.value);
+    });
+    addGlobalConditionButton.addEventListener("click", () => {
+      addGlobalCondition();
+      globalTargetPresetSelect.value = "";
+      clearGlobalPlanOutputs();
+    });
+    downloadAllResultsButton.addEventListener("click", downloadRunRecords);
+    resultsSortSelect.addEventListener("change", renderRunRecords);
+
+
+// Desktop-only state adapter; the solver and its probability model are unchanged.
+import { installDesktopState } from '../desktop-state.js';
+await installDesktopState({
+  app, initialRows, targetRows, collectionSelect, calculationModeSelect, calculationRuleSelect,
+  characterEquipmentMode, globalConditionRows, readRows, fillRows, readCharacterEquipmentInputs,
+  refreshCharacterSelect, setCalculationMode, setEquipmentSkipped, addGlobalCondition, loadRunRecords,
+  clearImportedOutputs() {
+    document.dispatchEvent(new Event('nikke-reroll:board-changed'));
+    characterExactSolutionCache.clear();
+    clearGlobalPlanOutputs();
+    renderEquipmentEffectOverview();
+    setResult('装备已导入，请确认目标后重新计算。',true);
+    setDetails(defaultDetails());
+    showMessage('');
+    activateOutputTab('result');
+  },
+});
+import { installStrategyUI } from '../strategy/ui.js';
+installStrategyUI({
+  app,initialRows,targetRows,collectionSelect,calculationRuleSelect,calculateButton,
+  characterEquipmentMode,readCharacterEquipmentInputs,calculationModeSelect,setCalculationMode,
+  clearGlobalPlanOutputs,
+  readRows,fillRows,createRows,setCalculating,setBatchProgress,showMessage,
+  clearSingleOutput() {
+    setInlineOptimalResult(classicOptimalResult,'盘面已更新，请重新计算。',true);
+    setResult('盘面已更新，请重新计算。',true);
+    setDetails(defaultDetails());
+  },
+});

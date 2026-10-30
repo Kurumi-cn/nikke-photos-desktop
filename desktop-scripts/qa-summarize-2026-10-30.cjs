@@ -1,0 +1,8 @@
+const fs=require('node:fs'),path=require('node:path');
+const root=path.resolve(__dirname,'../../codex temp/nikke-desktop/automation-dev-copy/neutral-qa-2026-10-30');
+const read=p=>JSON.parse(fs.readFileSync(path.join(root,p),'utf8'));
+const suites=Object.fromEntries(['units','ui','python'].map(mode=>{const j=read(mode+'-results.json');return [mode,{passed:j.results.filter(r=>r.code===0&&!r.timedOut).length,total:j.results.length,failed:j.results.filter(r=>r.code!==0||r.timedOut).map(r=>r.name)}]}));
+const latest=fs.readdirSync(root).filter(p=>p.startsWith('exploration-')).sort().at(-1),exploration=read(latest+'/results.json'),ocr=read('ocr/samples.json');
+const mismatches=[];for(const sample of ocr.samples)for(const truth of sample.truth){const row=sample.result.rows.find(r=>r.position===truth.position);if(!truth.empty && (!row||row.status!=='ok'||row.functionType!==truth.functionType||Math.abs((row.value??NaN)-parseFloat(truth.valueText))>1e-6))mismatches.push({file:sample.file,truth,row})}
+const result={date:'2026-10-30',suites,explorationDirectory:latest,explorationCases:exploration.results.map(r=>({name:r.name,status:r.status})),rendererCrashes:exploration.rendererCrashes,ocr:{summary:ocr.summary,mismatches,silentMismatches:mismatches.filter(m=>!m.row?.needsConfirm).length},productHashChecks:read('baseline-verification.json')};
+fs.writeFileSync(path.join(root,'summary.json'),JSON.stringify(result,null,2));console.log(JSON.stringify({suites,exploration:latest,cases:result.explorationCases,ocr:{samples:ocr.summary.samples,missed:ocr.summary.missing,silentMismatches:result.ocr.silentMismatches}},null,2));

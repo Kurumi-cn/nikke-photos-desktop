@@ -1,0 +1,13 @@
+{
+  "status": "reserved-not-executable",
+  "recognition": [
+    {"name": "PhotosCharacterList", "purpose": "列表页、排序筛选状态、页内角色卡锚点"},
+    {"name": "PhotosCharacterIdentity", "purpose": "详情页角色名/代号、识别歧义与人工纠错"},
+    {"name": "PhotosEquipmentSlots", "purpose": "四装备槽位、选中状态与详情页归属"},
+    {"name": "PhotosEquipmentDetail", "purpose": "装备详情页/词条区域、稳定帧与遮挡判断"},
+    {"name": "PhotosAffixEvidence", "purpose": "输出原图裁剪与坐标，交给现有正式装备OCR读取"}
+  ],
+  "futureActions": ["用户确认后单步进入角色/装备", "返回与页面验证", "可中断的遍历、去重与恢复"],
+  "draftSchema": "collection-contract.schema.json",
+  "writePolicy": "识别草稿→人工审阅/纠错→现有档案导入确认流程；当前无写入接口"
+}

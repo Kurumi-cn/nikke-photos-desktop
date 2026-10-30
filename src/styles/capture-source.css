@@ -1,0 +1,29 @@
+/* Reuse the desktop's semantic theme tokens and existing dlg/btn controls. */
+.capture-source-dialog { width: min(800px, calc(100vw - 32px)); height: min(520px, calc(100dvh - 32px)); max-width: none; max-height: none; padding: 0; overflow: hidden; color: var(--text); animation: none; }
+.capture-source-dialog::backdrop { background: var(--overlay); }
+.capture-source-dialog form { height: 100%; display: flex; flex-direction: column; min-height: 0; }
+.capture-source-dialog .dlg-head, .capture-source-dialog .dlg-foot { flex: none; }
+.capture-source-dialog .dlg-head { padding: 16px 20px; }
+.capture-source-dialog .dlg-head h2 { font-size: 16px; }
+.capture-source-intro { display: flex; gap: 12px; padding: 18px 20px 12px; flex: none; }
+.capture-source-intro svg { color: var(--primary); flex: none; margin-top: 2px; }
+.capture-source-intro p { margin: 0 0 4px; font-weight: 600; }
+.capture-source-intro span { color: var(--text-2); font-size: 12px; }
+.capture-source-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 20px 10px; flex: none; }
+.capture-source-toolbar h3 { font-size: 13px; margin: 0; font-weight: 600; }
+.capture-source-toolbar h3 span { color: var(--text-2); font-weight: 400; font-variant-numeric: tabular-nums; }
+.capture-source-list { flex: 1; min-height: 0; margin: 0 20px; overflow-y: auto; overflow-x: hidden; border: 1px solid var(--border); border-radius: var(--radius-sm); overscroll-behavior: contain; scrollbar-gutter: stable; }
+.capture-source-item { display: flex; align-items: center; gap: 12px; min-height: 64px; padding: 11px 14px; border-bottom: 1px solid var(--border); border-left: 3px solid transparent; cursor: pointer; content-visibility: auto; contain-intrinsic-size: auto 72px; }
+.capture-source-item:last-child { border-bottom: 0; }
+.capture-source-item:hover { background: var(--bg-3); }
+.capture-source-item:has(input:checked) { background: var(--primary-soft); border-left-color: var(--primary); }
+.capture-source-item:has(input:focus-visible) { outline: 2px solid var(--primary-border); outline-offset: -3px; }
+.capture-source-item input { flex: none; width: 16px; height: 16px; margin: 0; accent-color: var(--primary); }
+.capture-source-copy { display: flex; flex-direction: column; min-width: 0; flex: 1; gap: 3px; }
+.capture-source-name { font-weight: 600; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.capture-source-meta { color: var(--text-2); font-size: 12px; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.capture-source-selected { color: var(--text); flex: none; width: 3em; font-size: 12px; }
+.capture-source-status { flex: none; padding: 9px 20px; font-size: 12px; color: var(--text-2); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.capture-source-empty { height: 100%; min-height: 100px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 20px; color: var(--text-2); }
+.capture-source-empty p { margin: 6px 0 0; max-width: 32em; }
+@media (max-height: 420px) { .capture-source-intro { padding-block: 8px; } .capture-source-dialog .dlg-head { padding-block: 8px; } }

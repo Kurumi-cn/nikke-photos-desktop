@@ -1,0 +1,168 @@
+{
+  "PhotosListTitle": {
+    "type": "OCR",
+    "param": {
+      "roi": [
+        0,
+        0,
+        100,
+        45
+      ],
+      "expected": [
+        "^妮姬$"
+      ],
+      "threshold": 0.8
+    }
+  },
+  "PhotosListSort": {
+    "type": "OCR",
+    "param": {
+      "roi": [
+        710,
+        125,
+        125,
+        45
+      ],
+      "expected": [
+        "战斗力"
+      ],
+      "threshold": 0.8
+    }
+  },
+  "PhotosListHeader": {
+    "type": "TemplateMatch",
+    "param": {
+      "template": [
+        "photos/list-header.png"
+      ],
+      "roi": [
+        0,
+        0,
+        110,
+        50
+      ],
+      "threshold": [
+        0.86
+      ]
+    }
+  },
+  "PhotosListToolbar": {
+    "type": "TemplateMatch",
+    "param": {
+      "template": [
+        "photos/list-toolbar.png"
+      ],
+      "roi": [
+        442,
+        120,
+        400,
+        55
+      ],
+      "threshold": [
+        0.86
+      ]
+    }
+  },
+  "PhotosListSearch": {
+    "type": "TemplateMatch",
+    "param": {
+      "template": [
+        "photos/list-search.png"
+      ],
+      "roi": [
+        442,
+        120,
+        400,
+        55
+      ],
+      "threshold": [
+        0.86
+      ]
+    }
+  },
+  "PhotosListBurstI": {
+    "type": "TemplateMatch",
+    "param": {
+      "template": [
+        "photos/list-burst1.png"
+      ],
+      "roi": [
+        442,
+        120,
+        400,
+        55
+      ],
+      "threshold": [
+        0.86
+      ]
+    }
+  },
+  "PhotosListBurstII": {
+    "type": "TemplateMatch",
+    "param": {
+      "template": [
+        "photos/list-burst2.png"
+      ],
+      "roi": [
+        442,
+        120,
+        400,
+        55
+      ],
+      "threshold": [
+        0.86
+      ]
+    }
+  },
+  "PhotosListBurstIII": {
+    "type": "TemplateMatch",
+    "param": {
+      "template": [
+        "photos/list-burst3.png"
+      ],
+      "roi": [
+        442,
+        120,
+        400,
+        55
+      ],
+      "threshold": [
+        0.86
+      ]
+    }
+  },
+  "PhotosListFavorite": {
+    "type": "TemplateMatch",
+    "param": {
+      "template": [
+        "photos/list-favorite.png"
+      ],
+      "roi": [
+        442,
+        120,
+        400,
+        55
+      ],
+      "threshold": [
+        0.86
+      ]
+    }
+  },
+  "PhotosListCircle": {
+    "type": "TemplateMatch",
+    "param": {
+      "template": [
+        "photos/list-circle.png"
+      ],
+      "roi": [
+        442,
+        120,
+        400,
+        55
+      ],
+      "threshold": [
+        0.86
+      ]
+    }
+  }
+}

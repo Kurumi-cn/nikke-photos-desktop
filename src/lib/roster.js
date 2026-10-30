@@ -1,0 +1,91 @@
+import roster from '../data/roster.json' with { type: 'json' }
+import { isCnCharacter } from './cnRoster.js'
+import { toHantChars } from './hant.js'
+import { tData } from './i18n.js'
+import { getCustomNikkes, subscribeCustomNikkes } from './customNikkeStore.js'
+import { toCustomCharacter } from './customNikkeModel.js'
+
+export const BUILTIN_CHARACTERS = roster.characters
+export let CHARACTERS = roster.characters
+let customUrls = []
+subscribeCustomNikkes(() => {
+  const urls = []
+  const custom = getCustomNikkes().map(record => {
+    const makeUrl = image => { if (!image) return ''; const url = URL.createObjectURL(image.blob); urls.push(url); return url }
+    return toCustomCharacter(record, { avatar: makeUrl(record.avatarImage), artwork: makeUrl(record.artworkImage) })
+  })
+  CHARACTERS = [...BUILTIN_CHARACTERS, ...custom]
+  customUrls.forEach(url => URL.revokeObjectURL(url)); customUrls = urls
+})
+export const TAXONOMY = roster.taxonomy
+export const ROSTER_META = {
+  revision: roster.revision,
+  generatedAt: roster.generatedAt,
+  counts: roster.counts,
+}
+
+/** public 下的相对资源路径（兼容 GitHub Pages 子路径部署） */
+export const assetUrl = (relativePath) => String(relativePath).startsWith('blob:') ? relativePath : `${import.meta.env.BASE_URL}${relativePath}`
+export const isShareableCharacter = character => Boolean(character && !character.isCustom)
+
+/** 分类值 → 中文显示名（用于卡片式展示） */
+const labelIndex = new Map()
+const iconIndex = new Map()
+for (const group of TAXONOMY.filters) {
+  for (const option of group.options) {
+    labelIndex.set(`${group.key}:${option.value}`, option.label)
+    iconIndex.set(`${group.key}:${option.value}`, option.icon)
+  }
+}
+
+export const labelFor = (key, value) => tData(labelIndex.get(`${key}:${value}`) || value || '—')
+
+/** 分类值 → 图标路径（无图标返回空串，调用方自行跳过） */
+export const iconFor = (key, value) => iconIndex.get(`${key}:${value}`) || ''
+
+/** 角色显示名：繁体模式下走字形映射（数据层名词，见 lib/hant.js） */
+export const displayName = (character) => tData(character?.nameCn ?? '')
+
+const norm = (value) => String(value ?? '').toLowerCase()
+/** 搜索归一：简繁字形先统一（两种写法都能命中），再转小写 */
+const searchKey = (value) => norm(toHantChars(value))
+
+export function matchesSearch(character, query) {
+  const q = searchKey(query).trim()
+  if (!q) return true
+  return (
+    searchKey(character.nameCn).includes(q)
+    || searchKey(character.nameEn).includes(q)
+    || searchKey(character.nameCode).includes(q)
+    || searchKey(character.resourceId).includes(q)
+    || searchKey(character.pinyin).includes(q)
+    || character.aliases.some((alias) => searchKey(alias).includes(q))
+  )
+}
+
+/**
+ * 角色搜索 + 分类筛选（组内多选取并集、跨组取交集），与 NIKKE Helper 规则一致。
+ * toggles：国服已实装 / 珍藏品 / 超标准，默认全关（不额外缩小范围）。
+ * 国服口径：单独开启时按独立维护的国服名单筛；
+ * 若同时开启“珍藏品”，则按“国服已实装珍藏品”筛（12 人，collectibleCn ⊆ collectible）。
+ */
+export function applyFilters(list, { search = '', selected = {}, toggles = {} } = {}) {
+  let result = list
+  if (toggles.cnPublished) {
+    result = result.filter((c) => (isCnCharacter(c) && (!toggles.collectible || c.collectibleCn)))
+  }
+  if (toggles.collectible) result = result.filter((c) => c.collectible)
+  if (toggles.overSpec) result = result.filter((c) => c.overSpec)
+  if (norm(search).trim()) result = result.filter((c) => matchesSearch(c, search))
+  for (const group of TAXONOMY.filters) {
+    const chosen = selected[group.key]
+    if (chosen?.length) result = result.filter((c) => chosen.includes(c[group.key]))
+  }
+  return result
+}
+
+export const countActiveFilters = (selected = {}, toggles = {}) =>
+  Object.values(selected).reduce((sum, list) => sum + (list?.length || 0), 0)
+  + Object.values(toggles).filter(Boolean).length
+
+export const findCharacter = (code) => CHARACTERS.find((c) => c.nameCode === String(code)) || null

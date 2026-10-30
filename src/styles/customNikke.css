@@ -1,0 +1,60 @@
+.custom-nikke-page { max-width: 1160px; }
+.custom-scope-note, .custom-image-hint { color: var(--text-2); font-size: 12px; line-height: 1.7; }
+.custom-local-badge { display: inline-block; flex: none; padding: 2px 8px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 11px; font-weight: 400; color: var(--text-2); background: var(--bg-3); }
+.custom-nikke-layout { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 24px; align-items: start; margin-top: 20px; }
+.custom-nikke-form { padding: 22px; background: var(--bg-2); border: 1px solid var(--border); border-radius: var(--radius-lg); }
+.custom-nikke-form fieldset { min-width: 0; margin: 0 0 20px; padding: 0; border: 0; }
+.custom-nikke-form legend { padding: 0; margin-bottom: 16px; font-size: 16px; font-weight: 600; }
+.custom-nikke-form legend span { color: var(--text-2); font-size: 12px; font-weight: 400; }
+.custom-field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+.custom-field input, .custom-field select { width: 100%; min-height: 38px; }
+.custom-field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 18px; }
+.custom-nikke-form .custom-rarity legend { font-size: 13px; margin-bottom: 7px; font-weight: 400; }
+.custom-rarity > div { display: flex; gap: 10px; }
+.custom-rarity label { position: relative; display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 40px; min-width: 84px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); cursor: pointer; }
+.custom-rarity label:has(input:checked) { border-color: var(--primary); background: var(--primary-soft); }
+.custom-rarity label:has(input:focus-visible) { outline: 2px solid var(--primary-border); outline-offset: 2px; }
+.custom-rarity input { accent-color: var(--primary); }
+.custom-field-error { color: var(--danger-strong, var(--danger)); font-size: 12px; min-height: 0; }
+.custom-nikke-page .custom-required { display: inline; color: var(--danger); font-size: inherit; font-weight: 600; }
+.custom-library li > .custom-library-actions { display: flex; flex-direction: row; flex: none; gap: 8px; }
+.custom-delete { color: var(--danger-strong, var(--danger)); }
+.custom-deleted { margin-top: 18px; }
+.custom-deleted summary { cursor: pointer; color: var(--text-2); }
+.custom-deleted > p { color: var(--text-2); font-size: 12px; }
+.custom-field [aria-invalid=true] { border-color: var(--danger); }
+.custom-upload { display: flex; gap: 16px; padding: 14px; margin-top: 12px; border: 1px dashed var(--border-strong); border-radius: var(--radius-sm); align-items: center; }
+.custom-upload-preview { width: 88px; height: 88px; flex: none; display: grid; place-items: center; background: var(--bg-3); color: var(--text-2); font-size: 12px; border-radius: var(--radius-sm); overflow: hidden; }
+.custom-upload-preview img { width: 100%; height: 100%; object-fit: contain; }
+.custom-upload-preview.artwork { height: 116px; }
+.custom-upload-copy { min-width: 0; }
+.custom-upload-copy h3 { margin: 0; font-size: 13px; }
+.custom-upload-copy h3 span { font-weight: 400; font-size: 11px; color: var(--text-2); }
+.custom-upload-copy p { margin: 5px 0 8px; font-size: 12px; color: var(--text-2); }
+.custom-upload-copy .custom-field-error { color: var(--danger-strong, var(--danger)); }
+.custom-upload-actions, .custom-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.custom-actions { justify-content: flex-end; padding-top: 16px; border-top: 1px solid var(--border); }
+.custom-character-preview { padding: 18px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--bg-2); position: sticky; top: 72px; }
+.custom-character-preview h2 { margin: 0 0 16px; font-size: 14px; }
+.custom-preview-name { display: flex; gap: 10px; align-items: center; }
+.custom-preview-name img { object-fit: contain; border-radius: var(--radius-sm); }
+.custom-preview-name > div { min-width: 0; display: flex; flex-direction: column; align-items: start; gap: 5px; }
+.custom-preview-name strong { overflow-wrap: anywhere; }
+.custom-avatar-placeholder { display: grid; place-items: center; width: 56px; height: 56px; background: var(--bg-3); color: var(--text-2); flex: none; }
+.custom-preview-tags { display: flex; flex-wrap: wrap; gap: 6px 12px; margin: 16px 0; font-size: 12px; color: var(--text-2); }
+.custom-preview-art { height: 310px; display: grid; place-items: center; background: var(--bg-3); border-radius: var(--radius-sm); color: var(--text-2); font-size: 12px; }
+.custom-preview-art img { width: 100%; height: 310px; object-fit: contain; }
+.custom-character-preview > p { font-size: 12px; color: var(--text-2); margin-bottom: 0; }
+.custom-success, .custom-store-error { padding: 22px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--bg-2); }
+.custom-success h2 { font-size: 18px; overflow-wrap: anywhere; }
+.custom-library { margin-top: 28px; }
+.custom-library h2 { font-size: 16px; }
+.custom-library h2 span { color: var(--text-2); font-weight: 400; }
+.custom-library ul { padding: 0; margin: 0; list-style: none; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--bg-2); }
+.custom-library li { display: flex; justify-content: space-between; gap: 16px; align-items: center; padding: 14px 18px; border-bottom: 1px solid var(--border); content-visibility: auto; contain-intrinsic-size: auto 70px; }
+.custom-rarity label:hover { background: var(--bg-hover); }
+.custom-library li:last-child { border-bottom: 0; }
+.custom-library li > div { display: flex; flex-direction: column; gap: 4px; min-width: 0; overflow-wrap: anywhere; }
+.custom-library li span { font-size: 12px; color: var(--text-2); }
+@media (max-width: 850px) { .custom-nikke-layout { grid-template-columns: minmax(0, 1fr); } .custom-character-preview { position: static; } }
+@media (max-width: 560px) { .custom-field-grid { grid-template-columns: minmax(0, 1fr); } .custom-nikke-form { padding: 16px; } .custom-upload { padding: 10px; gap: 10px; } .custom-rarity label { min-width: 70px; } }

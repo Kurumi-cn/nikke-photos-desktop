@@ -1,0 +1,322 @@
+{
+  "PhotosLobbyText": {
+    "recognition": {
+      "type": "OCR",
+      "param": {
+        "roi": [
+          613,
+          655,
+          56,
+          57
+        ],
+        "expected": [
+          "大厅"
+        ]
+      }
+    },
+    "action": {
+      "type": "DoNothing"
+    },
+    "next": []
+  },
+  "PhotosLobbyAlliance": {
+    "recognition": {
+      "type": "TemplateMatch",
+      "param": {
+        "template": [
+          "lianmeng.png"
+        ],
+        "threshold": [
+          0.8
+        ]
+      }
+    },
+    "action": {
+      "type": "DoNothing"
+    },
+    "next": []
+  },
+  "PhotosLobbyTasks": {
+    "recognition": {
+      "type": "TemplateMatch",
+      "param": {
+        "template": [
+          "dailyrewards/task.png"
+        ],
+        "threshold": [
+          0.8
+        ]
+      }
+    },
+    "action": {
+      "type": "DoNothing"
+    },
+    "next": []
+  },
+  "PhotosNikkeTemplate": {
+    "recognition": {
+      "type": "TemplateMatch",
+      "param": {
+        "roi": [
+          452,
+          625,
+          86,
+          87
+        ],
+        "template": [
+          "inquiryandgift/intonikkes.png"
+        ]
+      }
+    },
+    "action": {
+      "type": "DoNothing"
+    },
+    "next": []
+  },
+  "PhotosNikkeText": {
+    "recognition": {
+      "type": "OCR",
+      "param": {
+        "roi": [
+          452,
+          625,
+          86,
+          87
+        ],
+        "expected": [
+          "妮姬"
+        ]
+      }
+    },
+    "action": {
+      "type": "DoNothing"
+    },
+    "next": []
+  },
+  "PhotosListTitle": {
+    "recognition": {
+      "type": "OCR",
+      "param": {
+        "roi": [
+          0,
+          0,
+          100,
+          45
+        ],
+        "expected": [
+          "^妮姬$"
+        ],
+        "threshold": 0.8
+      }
+    },
+    "action": {
+      "type": "DoNothing"
+    },
+    "next": []
+  },
+  "PhotosListSort": {
+    "recognition": {
+      "type": "OCR",
+      "param": {
+        "roi": [
+          710,
+          125,
+          125,
+          45
+        ],
+        "expected": [
+          "战斗力"
+        ],
+        "threshold": 0.8
+      }
+    },
+    "action": {
+      "type": "DoNothing"
+    },
+    "next": []
+  },
+  "PhotosListHeader": {
+    "recognition": {
+      "type": "TemplateMatch",
+      "param": {
+        "template": [
+          "photos/list-header.png"
+        ],
+        "roi": [
+          0,
+          0,
+          110,
+          50
+        ],
+        "threshold": [
+          0.86
+        ]
+      }
+    },
+    "action": {
+      "type": "DoNothing"
+    },
+    "next": []
+  },
+  "PhotosListToolbar": {
+    "recognition": {
+      "type": "TemplateMatch",
+      "param": {
+        "template": [
+          "photos/list-toolbar.png"
+        ],
+        "roi": [
+          442,
+          120,
+          400,
+          55
+        ],
+        "threshold": [
+          0.86
+        ]
+      }
+    },
+    "action": {
+      "type": "DoNothing"
+    },
+    "next": []
+  },
+  "PhotosListSearch": {
+    "recognition": {
+      "type": "TemplateMatch",
+      "param": {
+        "template": [
+          "photos/list-search.png"
+        ],
+        "roi": [
+          442,
+          120,
+          400,
+          55
+        ],
+        "threshold": [
+          0.86
+        ]
+      }
+    },
+    "action": {
+      "type": "DoNothing"
+    },
+    "next": []
+  },
+  "PhotosListBurstI": {
+    "recognition": {
+      "type": "TemplateMatch",
+      "param": {
+        "template": [
+          "photos/list-burst1.png"
+        ],
+        "roi": [
+          442,
+          120,
+          400,
+          55
+        ],
+        "threshold": [
+          0.86
+        ]
+      }
+    },
+    "action": {
+      "type": "DoNothing"
+    },
+    "next": []
+  },
+  "PhotosListBurstII": {
+    "recognition": {
+      "type": "TemplateMatch",
+      "param": {
+        "template": [
+          "photos/list-burst2.png"
+        ],
+        "roi": [
+          442,
+          120,
+          400,
+          55
+        ],
+        "threshold": [
+          0.86
+        ]
+      }
+    },
+    "action": {
+      "type": "DoNothing"
+    },
+    "next": []
+  },
+  "PhotosListBurstIII": {
+    "recognition": {
+      "type": "TemplateMatch",
+      "param": {
+        "template": [
+          "photos/list-burst3.png"
+        ],
+        "roi": [
+          442,
+          120,
+          400,
+          55
+        ],
+        "threshold": [
+          0.86
+        ]
+      }
+    },
+    "action": {
+      "type": "DoNothing"
+    },
+    "next": []
+  },
+  "PhotosListFavorite": {
+    "recognition": {
+      "type": "TemplateMatch",
+      "param": {
+        "template": [
+          "photos/list-favorite.png"
+        ],
+        "roi": [
+          442,
+          120,
+          400,
+          55
+        ],
+        "threshold": [
+          0.86
+        ]
+      }
+    },
+    "action": {
+      "type": "DoNothing"
+    },
+    "next": []
+  },
+  "PhotosListCircle": {
+    "recognition": {
+      "type": "TemplateMatch",
+      "param": {
+        "template": [
+          "photos/list-circle.png"
+        ],
+        "roi": [
+          442,
+          120,
+          400,
+          55
+        ],
+        "threshold": [
+          0.86
+        ]
+      }
+    },
+    "action": {
+      "type": "DoNothing"
+    },
+    "next": []
+  }
+}

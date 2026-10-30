@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>国服妮姬池 · 开发者维护</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f3f5fa;color:#19253a;font:15px/1.6 system-ui}main{max-width:1200px;margin:auto;padding:30px 24px}h1{margin:0;font-size:28px}p{color:#5a687e;margin:8px 0 20px}.bar{position:sticky;top:0;z-index:1;padding:14px;background:#fff;border-radius:12px;box-shadow:0 4px 18px #182f4910;display:flex;gap:12px;flex-wrap:wrap;align-items:center}input[type=search],select,button{font:inherit;border:1px solid #d5dcea;border-radius:7px;padding:9px 12px;background:white}input[type=search]{flex:1;min-width:200px}button{cursor:pointer}#save{background:#245ce0;color:white;border:0}#status{display:block;min-height:30px;padding:10px 0;color:#29558e}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(235px,1fr));gap:12px}.card{display:flex;align-items:center;gap:10px;background:white;border:1px solid #dde3ee;padding:12px;border-radius:10px;cursor:pointer}.card:has(input:checked){border-color:#4278ec;background:#edf3ff}.card img{width:46px;height:46px;object-fit:contain;border-radius:5px}.card small{display:block;font-size:12px;color:#697991}.card input{width:18px;height:18px;accent-color:#245ce0}#count{font-weight:650}.foot{font-size:13px;color:#64748b;margin-top:20px}button:disabled{opacity:.5;cursor:wait}
+</style>
+<main><h1>国服妮姬池</h1><p>勾选已加入国服的妮姬，取消勾选即可移出。此页为开发者工具，不随 EXE 打包。</p>
+<div class="bar"><input id="search" type="search" placeholder="搜索名称、拼音或角色编号" aria-label="搜索角色"><select id="view" aria-label="显示范围"><option value="all">全部角色</option><option value="in">已加入国服</option><option value="out">未加入国服</option></select><span id="count"></span><button id="reset">恢复软件当前名单</button><button id="save" disabled>保存待同步名单</button></div>
+<output id="status" role="status">正在读取软件名单…</output><div id="list" class="grid"></div><div class="foot">保存后回到聊天告诉我“名单已调整好”。我会读取草稿、核对增减并同步到软件。修改名单不会删除任何玩家存档。初始名单沿用原143名国服标记，请按实际进度核对。</div></main>
+<script type="module">
+let state, chosen, dirty=false
+const $=id=>document.getElementById(id)
+const status=text=>{$('status').textContent=text}
+function render(){
+ const query=$('search').value.trim().toLowerCase(), view=$('view').value
+ $('count').textContent=`国服 ${chosen.size} / ${state.characters.length} 名`
+ const shown=state.characters.filter(c=>(view==='all'||(view==='in')===chosen.has(c.nameCode))&&[c.nameCn,c.nameEn,c.pinyin,c.nameCode,...c.aliases||[]].some(v=>String(v||'').toLowerCase().includes(query)))
+ $('list').replaceChildren(...shown.map(c=>{
+  const label=document.createElement('label');label.className='card'
+  const check=document.createElement('input');check.type='checkbox';check.checked=chosen.has(c.nameCode);check.setAttribute('aria-label',c.nameCn)
+  check.onchange=()=>{check.checked?chosen.add(c.nameCode):chosen.delete(c.nameCode);dirty=true;status('有未保存修改');render()}
+  const img=document.createElement('img');img.src='/avatar/'+encodeURIComponent(c.nameCode);img.alt='';img.onerror=()=>img.hidden=true
+  const text=document.createElement('span'),name=document.createElement('strong'),detail=document.createElement('small');name.textContent=c.nameCn;detail.textContent=`${c.original_rare} · ${c.corporation} · ${c.nameCode}`;text.append(name,detail);label.append(check,img,text);return label
+ }))
+ if(!shown.length)$('list').textContent='没有匹配角色'
+}
+try{
+ const response=await fetch('/api/state');state=await response.json();if(!response.ok)throw Error(state.error)
+ const validDraft=state.draft?.baseHash===state.baseHash
+ chosen=new Set(validDraft?state.draft.nameCodes:state.current.nameCodes);render();$('save').disabled=false
+ status(validDraft?'已恢复上次保存的待同步名单':state.draft?'旧草稿已过期，已加载软件当前名单':'已加载软件当前名单；尚未修改')
+ $('search').oninput=render;$('view').onchange=render
+ $('reset').onclick=()=>{if(!confirm('恢复软件当前名单？当前未保存修改将被替换。'))return;chosen=new Set(state.current.nameCodes);dirty=true;render();status('已恢复，点击保存后更新草稿')}
+ $('save').onclick=async()=>{
+  $('save').disabled=true
+  try{const response=await fetch('/api/draft',{method:'POST',headers:{'Content-Type':'application/json','X-Editor-Token':state.token},body:JSON.stringify({baseHash:state.baseHash,nameCodes:[...chosen]})});const result=await response.json();if(!response.ok)throw Error(result.error);dirty=false;status(`已保存 ${result.nameCodes.length} 名。请回到聊天告诉我“名单已调整好”，等待同步。`)}catch(e){status('未保存：'+e.message)}finally{$('save').disabled=false}
+ }
+}catch(e){status('加载失败：'+e.message)}
+window.addEventListener('beforeunload',e=>{if(dirty){e.preventDefault();e.returnValue=''}})
+</script></html>

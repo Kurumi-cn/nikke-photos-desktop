@@ -1,0 +1,30 @@
+{
+  "repository": "https://github.com/zbxzbx98/zbxzbx98.github.io",
+  "commit": "4a2d9a5219919c3b88b7c1f9eff85ad8424e1d6b",
+  "license": "MIT",
+  "files": [
+    {
+      "name": "AffixSimulator.upstream.vue",
+      "sha256": "5b5518846a0870cfb4ba8a6e5e50db7d24bb2ec9781dca660164b1b825e2e347"
+    },
+    {
+      "name": "affix_4gear_solver.upstream.cjs",
+      "sha256": "7c1f9abcb00a336783d200bd1e5dfbc5be49ac6e95542d97c5161416838bf661"
+    },
+    {
+      "name": "affix.worker.upstream.js",
+      "sha256": "5c1c5f79aa271e86670d455d17ea088873a54e5ef9430742d5bcd5a03a4fdb62"
+    },
+    {
+      "name": "affix_tier_ranges.upstream.js",
+      "sha256": "27d3fc014e3bab6831287d2b33fc83b57d2903e638f80c33e87a638d4f6323ed"
+    }
+  ],
+  "changes": [
+    "Local external ESM Worker; no eval/blob/remote resources",
+    "Remove account bridge and unlicensed sound asset",
+    "Cancel/timeout requests and fix custom restart",
+    "Desktop styling, per-target status and approximation notices",
+    "Four-gear ESM export and removal of unreachable Node require fallback; numeric body unchanged"
+  ]
+}

@@ -1,0 +1,5 @@
+maafw==5.12.2
+MaaAgentBinary==1.0.1
+numpy==2.5.4
+Pillow==11.3.0
+StrEnum==0.4.15

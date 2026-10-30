@@ -1,0 +1,1572 @@
+<template>
+  <div class="simulator">
+    <div class="panel sim-controls">
+      <el-radio-group v-model="mode" :disabled="started">
+        <el-radio-button value="single">单装备</el-radio-button>
+        <el-radio-button value="character">角色</el-radio-button>
+      </el-radio-group>
+      <el-radio-group v-model="simMode" :disabled="started">
+        <el-radio-button value="random">随机模拟</el-radio-button>
+        <el-radio-button value="custom">自定义模拟</el-radio-button>
+      </el-radio-group>
+      <el-button v-if="simMode === 'random'" color="#1fa2ff" :loading="expectLoading" @click="startSimulation">开始随机模拟</el-button>
+      <el-button plain @click="restartGame" :disabled="!started">重新开始</el-button>
+      <el-button plain type="danger" @click="exitGame" :disabled="!started">退出关卡</el-button>
+      <el-button plain :disabled="!started" @click="showExpectation = true">查看期望</el-button>
+      <el-checkbox v-model="soundEnabled">启用音效</el-checkbox>
+      <el-tag size="small" :type="isGlobalRule ? 'warning' : 'info'" effect="plain">
+        {{ isGlobalRule ? '国际服版规则' : '国服版规则' }}
+      </el-tag>
+    </div>
+
+    <template v-if="started">
+      <div class="panel">
+        <h3 class="panel-title">目标词条（{{ mode === 'single' ? '单装备' : '四件装备合计' }}）</h3>
+        <div class="target-chips">
+          <span v-for="t in targets" :key="t.effects.join('')" class="target-chip">
+            {{ targetLabel(t) }} ≥ 阶数{{ t.tier }}
+          </span>
+        </div>
+        <div class="sim-stats">
+          <span class="stat">已消耗：<b class="stat-num">{{ stonesUsed }}</b> 石头</span>
+          <span class="stat">已消耗：<b class="stat-num">{{ keysUsed }}</b> 秘钥</span>
+          <el-tag v-if="won" type="success" effect="dark">已通关</el-tag>
+        </div>
+      </div>
+
+      <div class="gear-grid" :class="{ single: mode === 'single' }">
+        <div class="gear-card" v-for="(gear, gi) in gears" :key="gi">
+          <h4 class="gear-title">{{ mode === 'single' ? '装备' : '装备' + gearNames[gi] }}</h4>
+          <div class="slot-row" v-for="(slot, si) in gear.slots" :key="si">
+            <span class="slot-label">栏位{{ si + 1 }}</span>
+            <span class="slot-affix" :class="[{ empty: slot.effect === 'wd' }, tierClass(slot.tier)]">
+              {{ slotText(slot) }}
+            </span>
+            <span v-if="gear.locks[si]" class="lock-tag" :class="gear.locks[si]">
+              {{ gear.locks[si] === 'stone' ? '石头锁' : '秘钥锁' }}
+            </span>
+            <div class="slot-actions">
+              <el-checkbox
+                :model-value="wantOf(gear, si) === 'stone'"
+                :disabled="!canCheckLock(gear, si, 'stone')"
+                @change="v => setLockWant(gi, si, 'stone', v)"
+              >
+                石头锁<template v-if="lockCost(gear, si, 'stone') !== null">（{{ lockCost(gear, si, 'stone') }} 石）</template>
+              </el-checkbox>
+              <el-checkbox
+                :model-value="wantOf(gear, si) === 'key'"
+                :disabled="!canCheckLock(gear, si, 'key')"
+                @change="v => setLockWant(gi, si, 'key', v)"
+              >
+                秘钥锁<template v-if="lockCost(gear, si, 'key') !== null">（{{ lockCost(gear, si, 'key') }} 钥）</template>
+              </el-checkbox>
+              <el-button size="small" :disabled="gear.locks[si] !== 'stone'" @click="unlockSlot(gi, si)">解锁</el-button>
+            </div>
+          </div>
+          <div class="wash-area">
+            <el-button color="#1fa2ff" :disabled="won" @click="startWash(gi, 'xg')">
+              变更效果（{{ washCost(gear) }} 石头）
+            </el-button>
+            <el-button plain :disabled="won || !canWashSz(gear)" @click="startWash(gi, 'sz')">
+              变更数值（{{ washCost(gear) }} 石头）
+            </el-button>
+            <span class="wash-hint">变更效果：重新随机未锁定栏位的词条效果与阶数；变更数值：仅重新随机阶数</span>
+            <span v-if="plannedLockText(gear)" class="wash-hint lock-plan-hint">{{ plannedLockText(gear) }}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel goal-note">
+        <p>提示：石头锁为永久锁，可随时免费解锁；秘钥锁为一次性锁，本次洗练后自动解除（即使选择保留之前的词条）。目标达成即通关。</p>
+        <p>勾选「石头锁 / 秘钥锁」不会立刻消耗资源，点击「变更效果 / 变更数值」时才扣费并上锁（石头锁优先，然后秘钥锁）。秘钥锁的勾选在洗练后保留，下次变更会再次消耗秘钥。</p>
+      </div>
+    </template>
+
+    <template v-else-if="simMode === 'custom'">
+      <div class="panel custom-panel">
+        <h3 class="panel-title">自定义初始状态（{{ mode === 'single' ? '单装备' : '角色' }}）</h3>
+        <p class="panel-note">手动输入当前装备词条与目标，开始模拟后玩法与随机模拟一致；「石头锁」为初始永久锁，可随时免费解锁。</p>
+
+        <div v-if="mode === 'single'" class="gear-grid single">
+          <div class="gear-card">
+            <h4 class="gear-title">装备</h4>
+            <div class="slot-row" v-for="(slot, si) in customSingleGear.slots" :key="si">
+              <span class="slot-label">栏位{{ si + 1 }}</span>
+              <el-select
+                v-model="slot.effect"
+                style="width: 160px;"
+                :disabled="si > 0 && customSingleGear.slots[0].effect === 'wd'"
+                @change="onCustomSlotChange(customSingleGear, si)"
+              >
+                <el-option v-for="e in gearEffectOptions(customSingleGear, si)" :key="e.code" :label="e.name" :value="e.code" />
+              </el-select>
+              <el-select
+                v-model="slot.tier"
+                style="width: 150px;"
+                :disabled="slot.effect === 'wd' || (si > 0 && customSingleGear.slots[0].effect === 'wd')"
+                placeholder="阶数"
+              >
+                <el-option v-for="t in tierOptions(slot.effect)" :key="t.value" :label="t.label" :value="t.value" />
+              </el-select>
+              <el-checkbox
+                :model-value="!!customSingleGear.locks[si]"
+                :disabled="slot.effect === 'wd' || (Object.keys(customSingleGear.locks).length >= 2 && !customSingleGear.locks[si])"
+                @change="v => onCustomLockChange(customSingleGear, si, v)"
+              >石头锁</el-checkbox>
+            </div>
+          </div>
+        </div>
+
+        <div v-else class="gear-grid">
+          <div class="gear-card" v-for="(gear, gi) in customCharGears" :key="gi">
+            <h4 class="gear-title">装备{{ gearNames[gi] }}</h4>
+            <div class="slot-row" v-for="(slot, si) in gear.slots" :key="si">
+              <span class="slot-label">栏位{{ si + 1 }}</span>
+              <el-select
+                v-model="slot.effect"
+                style="width: 160px;"
+                :disabled="si > 0 && gear.slots[0].effect === 'wd'"
+                @change="onCustomSlotChange(gear, si)"
+              >
+                <el-option v-for="e in gearEffectOptions(gear, si)" :key="e.code" :label="e.name" :value="e.code" />
+              </el-select>
+              <el-select
+                v-model="slot.tier"
+                style="width: 150px;"
+                :disabled="slot.effect === 'wd' || (si > 0 && gear.slots[0].effect === 'wd')"
+                placeholder="阶数"
+              >
+                <el-option v-for="t in tierOptions(slot.effect)" :key="t.value" :label="t.label" :value="t.value" />
+              </el-select>
+              <el-checkbox
+                :model-value="!!gear.locks[si]"
+                :disabled="slot.effect === 'wd' || (Object.keys(gear.locks).length >= 2 && !gear.locks[si])"
+                @change="v => onCustomLockChange(gear, si, v)"
+              >石头锁</el-checkbox>
+            </div>
+          </div>
+        </div>
+
+        <h3 class="panel-title custom-target-title">自定义目标词条（{{ mode === 'single' ? '最多3个' : '最多5个，四件合计' }}）</h3>
+        <p class="panel-note">同一行下拉可多选词条并合并为同一目标：抽中其中任意一个（达到阶数）即算该目标达标（如 暴击伤害+暴击率 11阶 = bsbj11）。不同行目标需同时满足；所有词条全局不可重复。</p>
+        <div class="slot-list">
+          <div class="slot-row" v-for="(t, i) in customTargets" :key="i">
+            <span class="slot-label">目标{{ i + 1 }}</span>
+            <el-select v-model="t.effects" multiple style="width: 210px;" placeholder="选择词条（可多选）">
+              <el-option v-for="e in targetEffectOptions(customTargets, i)" :key="e.code" :label="e.name" :value="e.code" />
+            </el-select>
+            <el-select v-model="t.tier" style="width: 150px;" :disabled="!t.effects || !t.effects.length" placeholder="选择阶数">
+              <template v-if="mode === 'single'">
+                <el-option v-for="opt in tierOptions(t.effects)" :key="opt.value" :label="opt.label" :value="opt.value" />
+              </template>
+              <template v-else>
+                <el-option v-for="opt in charTierOptions(t.effects)" :key="opt.value" :label="opt.label" :value="opt.value" />
+              </template>
+            </el-select>
+            <el-button v-if="customTargets.length > 1" text type="danger" @click="removeCustomTarget(i)">删除</el-button>
+          </div>
+        </div>
+        <div class="add-row">
+          <el-button plain :disabled="customTargets.length >= (mode === 'single' ? 3 : 5)" @click="addCustomTarget">+ 添加目标词条</el-button>
+        </div>
+        <p v-if="mode === 'character'" class="rule-note">
+          角色目标需满足：单词条阶数 ≤ 60；全部词条总阶数 ≤ 180；各词条阶数 ÷15 向上取整后相加 ≤ 12。
+        </p>
+
+        <div class="compare-actions">
+          <el-button plain size="large" @click="emit('read-aka', mode)">读取阿卡数据</el-button>
+          <el-button color="#1fa2ff" size="large" @click="startCustomSimulation">开始模拟</el-button>
+        </div>
+        <p v-if="customError" class="custom-error">{{ customError }}</p>
+      </div>
+    </template>
+
+    <el-empty v-else description="选择模式后点击「开始随机模拟」或使用「自定义模拟」" />
+
+    <!-- 洗练结果弹窗 -->
+    <el-dialog
+      v-model="dialogVisible"
+      title="洗练结果"
+      width="560px"
+      :close-on-click-modal="false"
+      :close-on-press-escape="false"
+      :show-close="false"
+      align-center
+    >
+      <template v-if="pendingWash">
+        <p class="dialog-note">
+          本次{{ pendingWash.type === 'xg' ? '变更效果' : '变更数值' }}消耗 <b>{{ pendingWash.cost }}</b> 石头
+          <template v-if="pendingWash.lockStone">
+            ，新上锁消耗 <b>{{ pendingWash.lockStone }}</b> 石头
+          </template>
+          <template v-if="pendingWash.lockKey">
+            ，新上锁消耗 <b>{{ pendingWash.lockKey }}</b> 秘钥
+          </template>
+          <template v-if="pendingWash.keyLocks.length">
+            ；装备上的秘钥锁（第{{ pendingWash.keyLocks.map(i => i + 1).join('、') }}栏）已在本轮洗练后解除（勾选保留，下次变更会再次消耗秘钥）
+          </template>
+        </p>
+        <div class="wash-blocks">
+          <div class="wash-block old-block">
+            <div class="wash-block-title">目前效果</div>
+            <div class="wash-block-list">
+              <div
+                v-for="(row, i) in pendingWash.rows"
+                :key="'o' + i"
+                class="wash-block-item"
+              >
+                <span :class="tierClass(row.old.tier)">{{ slotText(row.old) }}</span>
+              </div>
+            </div>
+          </div>
+          <div class="wash-swap">↑↓</div>
+          <div class="wash-block new-block">
+            <div class="wash-block-title">变更效果</div>
+            <div class="wash-block-list">
+              <div
+                v-for="(row, i) in pendingWash.rows"
+                :key="'n' + i"
+                class="wash-block-item"
+              >
+                <span :class="tierClass(row.new.tier)">{{ slotText(row.new) }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </template>
+      <template #footer>
+        <div class="wash-footer">
+          <template v-if="pendingWash && pendingWash.forceApply">
+            <el-button class="btn-apply" @click="resolveWash(true)">应用</el-button>
+            <p class="dialog-note wash-note">空装备首次改造只能应用，且固定获得 11 阶词条。</p>
+          </template>
+          <template v-else>
+            <el-button class="btn-keep" @click="resolveWash(false)">效果保留</el-button>
+            <el-button class="btn-apply" @click="resolveWash(true)">效果变更</el-button>
+            <div class="wash-again-row">
+              <el-button class="btn-again" @click="keepAndWashAgain()">保留并再次变更</el-button>
+            </div>
+            <p class="dialog-note wash-note">
+              选择「效果保留」会放弃本次结果；秘钥锁不会恢复（勾选保留，下次变更会再次消耗秘钥）。
+              「保留并再次变更」＝保留本次结果，并立刻按相同设置再洗一次。
+            </p>
+          </template>
+        </div>
+      </template>
+    </el-dialog>
+
+    <!-- 期望 / 通关结果 -->
+    <div v-if="started && (showExpectation || won)" class="panel result-panel">
+      <h3 class="panel-title">{{ won ? '通关！实际消耗与初始期望对比' : '初始期望' }}</h3>
+      <div v-if="expectation" class="expect-box">
+        <div class="expect-row">初始期望（全石头）：<b>{{ fmtNum(allStone) }}</b> 石头</div>
+        <div class="expect-row">初始期望（允许秘钥）：<b>{{ fmtNum(keyStone) }}</b> 石头 + <b>{{ fmtNum(keys) }}</b> 秘钥</div>
+        <template v-if="won">
+          <div class="expect-divider"></div>
+          <div class="expect-row">实际消耗：<b>{{ stonesUsed }}</b> 石头 + <b>{{ keysUsed }}</b> 秘钥</div>
+          <div class="expect-row">
+            与全石头期望的石头差：<b :class="diffClass(stonesUsed - allStone)">{{ fmtNum(stonesUsed - allStone) }}</b>
+          </div>
+          <div class="expect-row">
+            与秘钥策略的石头差：<b :class="diffClass(stonesUsed - keyStone)">{{ fmtNum(stonesUsed - keyStone) }}</b>；
+            秘钥差：<b :class="diffClass(keysUsed - keys)">{{ fmtNum(keysUsed - keys) }}</b>
+          </div>
+        </template>
+      </div>
+      <div v-else-if="expectError" class="expect-error">期望计算失败：{{ expectError }}</div>
+      <div v-else class="expect-loading">{{ expectProgress || '期望计算中，请稍候…' }}</div>
+      <p v-if="isGlobalRule" class="dialog-note expect-rule-note">
+        注：当前为国际服版规则（改造结果与该栏改造前完全相同时，会重抽一次数值且不再抽到原数值），期望按该规则计算。
+      </p>
+      <div v-if="won" class="again-area">
+        <el-button color="#1fa2ff" @click="startSimulation">再来一局</el-button>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { ref, computed, onUnmounted, watch } from 'vue'
+import { CHAR_TIER_RANGES } from '../affix_tier_ranges.js'
+// 内联 Worker（Blob）：不依赖外部 worker / 算法文件，也不使用 import.meta
+import AffixWorker from '../workers/affix.worker.js?worker&inline'
+
+const emit = defineEmits(['read-aka'])
+
+const props = defineProps({
+  // 洗练规则版本：'cn' = 国服版（默认）；'global' = 国际服版
+  // 由父组件（AffixCalc）统一维护，三个 Tab 共用
+  ruleVersion: { type: String, default: 'cn' },
+})
+
+// 是否使用国际服版规则（仅影响随机模拟与期望计算的洗练判定）
+const isGlobalRule = computed(() => props.ruleVersion === 'global')
+
+
+/* ==================== 游戏常量 ==================== */
+
+const EFFECT_NAMES = {
+  uy: '优越代码伤害',
+  gj: '攻击力',
+  bs: '暴击伤害',
+  fy: '防御力',
+  xl: '蓄力伤害',
+  xs: '蓄力速度',
+  bj: '暴击率',
+  mz: '命中率',
+  dr: '最大装弹数',
+}
+
+// 各效果 1~15 阶对应数值（百分比）
+const TIER_VALUES = {
+  uy: ['9.54%','10.94%','12.34%','13.75%','15.15%','16.55%','17.95%','19.35%','20.75%','22.15%','23.56%','24.96%','26.36%','27.76%','29.16%'],
+  gj: ['4.77%','5.47%','6.18%','6.88%','7.59%','8.29%','9.00%','9.70%','10.40%','11.11%','11.81%','12.52%','13.22%','13.93%','14.63%'],
+  bs: ['6.64%','7.62%','8.60%','9.58%','10.56%','11.54%','12.52%','13.50%','14.48%','15.46%','16.44%','17.42%','18.40%','19.38%','20.36%'],
+  fy: ['4.77%','5.47%','6.18%','6.88%','7.59%','8.29%','9.00%','9.70%','10.40%','11.11%','11.81%','12.52%','13.22%','13.93%','14.63%'],
+  xl: ['4.77%','5.47%','6.18%','6.88%','7.59%','8.29%','9.00%','9.70%','10.40%','11.11%','11.81%','12.52%','13.22%','13.93%','14.63%'],
+  xs: ['1.98%','2.28%','2.57%','2.86%','3.16%','3.45%','3.75%','4.04%','4.33%','4.63%','4.92%','5.21%','5.51%','5.80%','6.09%'],
+  bj: ['2.30%','2.64%','2.98%','3.32%','3.66%','4.00%','4.35%','4.69%','5.03%','5.37%','5.71%','6.05%','6.39%','6.73%','7.07%'],
+  mz: ['4.77%','5.47%','6.18%','6.88%','7.59%','8.29%','9.00%','9.70%','10.40%','11.11%','11.81%','12.52%','13.22%','13.93%','14.63%'],
+  dr: ['27.84%','31.95%','36.06%','40.17%','44.28%','48.39%','52.50%','56.60%','60.71%','64.82%','68.93%','73.04%','77.15%','81.26%','85.37%'],
+}
+
+// 洗练效果抽取权重（10%组与12%组，与算法一致）
+const EFFECT_WEIGHTS = [
+  { code: 'uy', w: 0.10 },
+  { code: 'gj', w: 0.10 },
+  { code: 'bs', w: 0.10 },
+  { code: 'fy', w: 0.10 },
+  { code: 'xl', w: 0.12 },
+  { code: 'xs', w: 0.12 },
+  { code: 'bj', w: 0.12 },
+  { code: 'mz', w: 0.12 },
+  { code: 'dr', w: 0.12 },
+]
+
+// 目标词条随机概率：优越40%、攻击30%、装弹10%，其余20%其他词条平分
+const TARGET_POOL = [
+  { code: 'uy', w: 0.40 },
+  { code: 'gj', w: 0.30 },
+  { code: 'dr', w: 0.10 },
+  { code: 'bs', w: 0.20 / 6 },
+  { code: 'fy', w: 0.20 / 6 },
+  { code: 'xl', w: 0.20 / 6 },
+  { code: 'xs', w: 0.20 / 6 },
+  { code: 'bj', w: 0.20 / 6 },
+  { code: 'mz', w: 0.20 / 6 },
+]
+
+const TIER_P = [0, 0.12, 0.12, 0.12, 0.12, 0.12, 0.07, 0.07, 0.07, 0.07, 0.07, 0.01, 0.01, 0.01, 0.01, 0.01]
+const SLOT_GET = [1.0, 0.5, 0.3]
+const WASH_STONE = [1, 2, 3]
+const LOCK_STONE = [2, 3]
+const LOCK_KEY = [20, 30]
+const gearNames = ['一', '二', '三', '四']
+
+const blankSlot = () => ({ effect: 'wd', tier: 0 })
+// 目标：effects 为多选词条代号数组（同一行多选合并为同一目标）
+// 单装备默认 13 阶；角色目标默认 44 阶（13 阶对角色来说太低）
+const blankTarget = (tier = 13) => ({ effects: [], tier })
+const blankGear = () => ({ slots: [blankSlot(), blankSlot(), blankSlot()], locks: {}, want: {} })
+
+const effectOptions = [
+  { code: 'wd', name: '空词条' },
+  ...EFFECT_WEIGHTS.map(e => ({ code: e.code, name: EFFECT_NAMES[e.code] })),
+]
+
+const targetEffectOptionsList = EFFECT_WEIGHTS.map(e => ({ code: e.code, name: EFFECT_NAMES[e.code] }))
+
+/* ==================== 状态 ==================== */
+
+const mode = ref('single')
+const simMode = ref('random')
+const soundEnabled = ref(true)
+const started = ref(false)
+const gears = ref([])
+const targets = ref([])
+const stonesUsed = ref(0)
+const keysUsed = ref(0)
+const won = ref(false)
+const showExpectation = ref(false)
+const expectation = ref(null)
+const expectError = ref('')
+const expectLoading = ref(false)
+const expectProgress = ref('')
+const dialogVisible = ref(false)
+const pendingWash = ref(null)
+
+// 自定义模拟
+const customSingleGear = ref(blankGear())
+const customCharGears = ref(Array.from({ length: 4 }, () => blankGear()))
+const customTargets = ref([blankTarget()])
+const customError = ref('')
+
+let worker = null
+let reqId = 0
+let latestReqId = 0
+const pendingReqs = new Map()
+
+/* ==================== 随机生成 ==================== */
+
+function randomTier() {
+  const r = Math.random()
+  let acc = 0
+  for (let t = 1; t <= 15; t++) {
+    acc += TIER_P[t]
+    if (r < acc) return t
+  }
+  return 15
+}
+
+// 国际服版：改造结果与原结果“完全相同”时会重抽一次该栏数值，
+// 且这次不会再抽到原数值；因此在剩余 14 个阶数上按 TIER_P 归一化后抽取。
+function randomTierExcept(excludeTier) {
+  const ex = Number(excludeTier)
+  if (!Number.isInteger(ex) || ex < 1 || ex > 15) return randomTier()
+  const total = 1 - TIER_P[ex]
+  if (total <= 0) return randomTier()
+  const r = Math.random() * total
+  let acc = 0
+  for (let t = 1; t <= 15; t++) {
+    if (t === ex) continue
+    acc += TIER_P[t]
+    if (r < acc) return t
+  }
+  // 浮点误差兜底：取最后一个非排除阶数
+  for (let t = 15; t >= 1; t--) {
+    if (t !== ex) return t
+  }
+  return randomTier()
+}
+
+// 国际服版新规则：只有“效果与数值都与改造前完全相同”时，
+// 才会重抽一次该栏数值（且保证不会再抽到原数值）。
+// 变更数值时效果必然不变，所以等价于“抽到原数值就重抽”。
+function randomTierAvoidSame(oldTier) {
+  const old = Number(oldTier)
+  const t = randomTier()
+  if (Number.isInteger(old) && old >= 1 && old <= 15 && t === old) {
+    return randomTierExcept(old)
+  }
+  return t
+}
+
+function randomEffect(exclude = []) {
+  const pool = EFFECT_WEIGHTS.filter(e => !exclude.includes(e.code))
+  const total = pool.reduce((s, e) => s + e.w, 0)
+  let r = Math.random() * total
+  for (const e of pool) {
+    r -= e.w
+    if (r <= 0) return e.code
+  }
+  return pool[pool.length - 1].code
+}
+
+function sampleTargetEffects(count) {
+  const pool = TARGET_POOL.slice()
+  const out = []
+  for (let i = 0; i < count; i++) {
+    const total = pool.reduce((s, p) => s + p.w, 0)
+    let r = Math.random() * total
+    let idx = 0
+    for (let k = 0; k < pool.length; k++) {
+      r -= pool[k].w
+      if (r <= 0) {
+        idx = k
+        break
+      }
+    }
+    out.push(pool[idx].code)
+    pool.splice(idx, 1)
+  }
+  return out
+}
+
+function generateGear() {
+  const slots = []
+  const used = []
+  for (let i = 0; i < 3; i++) {
+    // 一号栏必定有词条，其余栏位50%概率
+    if (i === 0 || Math.random() < 0.5) {
+      const effect = randomEffect(used)
+      slots.push({ effect, tier: randomTier() })
+      used.push(effect)
+    } else {
+      slots.push({ effect: 'wd', tier: 0 })
+    }
+  }
+  return { slots, locks: {}, want: {} }
+}
+
+function generateTargets(maxCount, maxTier) {
+  const count = 1 + Math.floor(Math.random() * maxCount)
+  const effects = sampleTargetEffects(count)
+
+  // 每个目标有 20% 概率再与一个随机未使用词条合并成双词条目标；
+  // 若词条已被前面的目标用完（最多5目标时可能发生），则不再合并。
+  const used = new Set(effects)
+  const partnerFor = new Map()
+  for (const e of effects) {
+    if (Math.random() < 0.2) {
+      const avail = EFFECT_WEIGHTS.map(x => x.code).filter(c => !used.has(c))
+      if (avail.length) {
+        const partner = avail[Math.floor(Math.random() * avail.length)]
+        used.add(partner)
+        partnerFor.set(e, partner)
+      }
+    }
+  }
+  const build = (e, tier) => {
+    const partner = partnerFor.get(e)
+    return partner ? { effects: [e, partner], tier } : { effects: [e], tier }
+  }
+
+  if (maxTier === 15) {
+    return effects.map(e => build(e, 5 + Math.floor(Math.random() * 11)))
+  }
+
+  // 角色模式：1..60，且满足 单词条≤60、总和≤180、Σ⌈阶数/15⌉≤12
+  for (let attempt = 0; attempt < 200; attempt++) {
+    const tiers = effects.map(() => 5 + Math.floor(Math.random() * 56))
+    const list = effects.map((e, i) => build(e, tiers[i]))
+    if (isCharacterTargetFeasible(list)) return list
+  }
+  // 兜底：5..30 必定合法（5件×30=150≤180，⌈30/15⌉×5=10≤12）
+  return effects.map(e => build(e, 5 + Math.floor(Math.random() * 26)))
+}
+
+// 角色目标可行性：单词条 1..60、总阶数 ≤180、各词条阶数÷15向上取整之和 ≤12
+function isCharacterTargetFeasible(list) {
+  if (!Array.isArray(list) || list.length > 5) return false
+  const sum = list.reduce((s, t) => s + t.tier, 0)
+  const slots = list.reduce((s, t) => s + Math.ceil(t.tier / 15), 0)
+  return list.every(t => Number.isInteger(t.tier) && t.tier >= 1 && t.tier <= 60) && sum <= 180 && slots <= 12
+}
+
+/* ==================== 自定义模拟 ==================== */
+
+// effect 可以是单个代号，也可以是合并目标的多选代号数组
+function tierOptions(effect) {
+  const codes = Array.isArray(effect) ? effect : (effect ? [effect] : [])
+  if (!codes.length || codes[0] === 'wd') return []
+  const merged = codes.length > 1
+  return TIER_VALUES[codes[0]].map((v, idx) => ({
+    value: idx + 1,
+    label: merged ? `阶数${idx + 1}` : `阶数${idx + 1}（${v}）`,
+  }))
+}
+
+// 角色目标总阶数选项（1~60）：仅单选一个词条时显示数值范围，如 阶数15（29.16%~53.58%）
+function charTierOptions(effects) {
+  const codes = Array.isArray(effects) ? effects : (effects ? [effects] : [])
+  const single = codes.length === 1 ? codes[0] : null
+  const ranges = single ? (CHAR_TIER_RANGES[single] || null) : null
+  return Array.from({ length: 60 }, (_, i) => {
+    const n = i + 1
+    const range = ranges ? ranges[i] : null
+    return { value: n, label: range ? `阶数${n}（${range}）` : `阶数${n}` }
+  })
+}
+
+function gearEffectOptions(gear, si) {
+  // 只有非空词条才占用槽位，空词条(未获取效果)不参与去重
+  const used = gear.slots
+    .map((s, i) => (i === si ? '' : s.effect))
+    .filter(e => e && e !== 'wd')
+  return effectOptions.filter(e => !used.includes(e.code))
+}
+
+// 其他目标行已选用的词条不可再选（全局不允许重复）
+function targetEffectOptions(list, i) {
+  const used = []
+  for (let k = 0; k < list.length; k++) {
+    if (k === i) continue
+    const t = list[k]
+    if (t.effects && t.effects.length) used.push(...t.effects)
+  }
+  return targetEffectOptionsList.filter(e => !used.includes(e.code))
+}
+
+// 目标展示名：合并目标显示为 "A或B"
+function targetLabel(t) {
+  const codes = Array.isArray(t.effects) && t.effects.length ? t.effects : (t.effect ? [t.effect] : [])
+  if (!codes.length) return '（未选择）'
+  return codes.map(c => EFFECT_NAMES[c]).join('或')
+}
+
+function onCustomSlotChange(gear, si) {
+  const slot = gear.slots[si]
+  if (slot.effect === 'wd') {
+    slot.tier = 0
+    delete gear.locks[si]
+  } else if (!slot.tier || slot.tier < 1 || slot.tier > 15) {
+    slot.tier = 1
+  }
+  if (si === 0 && slot.effect === 'wd') {
+    gear.slots[1] = blankSlot()
+    gear.slots[2] = blankSlot()
+    delete gear.locks[1]
+    delete gear.locks[2]
+  }
+}
+
+function onCustomLockChange(gear, si, val) {
+  if (val) gear.locks[si] = 'stone'
+  else delete gear.locks[si]
+}
+
+function addCustomTarget() {
+  const max = mode.value === 'single' ? 3 : 5
+  if (customTargets.value.length >= max) return
+  customTargets.value.push(blankTarget(mode.value === 'character' ? 44 : 13))
+}
+
+function removeCustomTarget(i) {
+  if (customTargets.value.length <= 1) return
+  customTargets.value.splice(i, 1)
+}
+
+function cloneCustomGear(gear) {
+  return {
+    slots: gear.slots.map(s => ({ ...s })),
+    locks: { ...gear.locks },
+    want: {},
+  }
+}
+
+function validateCustom() {
+  const gearList = mode.value === 'single' ? [customSingleGear.value] : customCharGears.value
+  for (let g = 0; g < gearList.length; g++) {
+    const gear = gearList[g]
+    const seen = new Set()
+    let lockedCount = 0
+    for (let si = 0; si < 3; si++) {
+      const s = gear.slots[si]
+      if (s.effect !== 'wd') {
+        if (seen.has(s.effect)) return `装备${gearNames[g]}内词条不能重复`
+        seen.add(s.effect)
+        if (!Number.isInteger(s.tier) || s.tier < 1 || s.tier > 15) {
+          return `装备${gearNames[g]}栏位${si + 1}的阶数需在 1~15`
+        }
+      }
+      if (gear.locks[si]) lockedCount++
+    }
+    if (lockedCount > 2) return `每件装备最多锁定 2 个栏位`
+  }
+
+  const list = customTargets.value.filter(t => t.effects && t.effects.length)
+  if (!list.length) return '请至少选择 1 个目标词条'
+  const maxCount = mode.value === 'single' ? 3 : 5
+  if (list.length > maxCount) return `目标词条最多 ${maxCount} 个`
+  const seenT = new Set()
+  for (const t of list) {
+    for (const code of t.effects) {
+      if (seenT.has(code)) return `词条「${EFFECT_NAMES[code]}」在多个目标中重复，所有词条不允许重复`
+      seenT.add(code)
+    }
+    const maxTier = mode.value === 'single' ? 15 : 60
+    if (!Number.isInteger(t.tier) || t.tier < 1 || t.tier > maxTier) {
+      return `目标词条「${targetLabel(t)}」的阶数需在 1~${maxTier}`
+    }
+  }
+  if (mode.value === 'character' && !isCharacterTargetFeasible(list)) {
+    return '角色目标不满足：单词条 ≤60、总和 ≤180、各词条阶数÷15向上取整之和 ≤12'
+  }
+  return null
+}
+
+/* ==================== 目标判定 ==================== */
+
+function goalMetFor(gearList, targetList) {
+  if (mode.value === 'single') {
+    const slots = gearList[0].slots
+    return targetList.every(t => slots.some(s => t.effects.includes(s.effect) && s.tier >= t.tier))
+  }
+  return targetList.every(t => {
+    let sum = 0
+    for (const gear of gearList) {
+      for (const s of gear.slots) {
+        if (t.effects.includes(s.effect)) sum += s.tier
+      }
+    }
+    return sum >= t.tier
+  })
+}
+
+function checkWin() {
+  if (goalMetFor(gears.value, targets.value)) {
+    won.value = true
+    showExpectation.value = true
+  }
+}
+
+/* ==================== 玩家操作 ==================== */
+
+function lockCount(gear) {
+  return Object.keys(gear.locks).length
+}
+
+/**
+ * 勾选状态只有“意愿”，点击变更（变更效果/变更数值）时才真正扣费上锁。
+ *
+ * 与 gear.locks 分开存放：
+ *   - 石头锁买入后进 gear.locks（永久锁），对应勾选被清除；
+ *   - 秘钥锁是一次性的，洗练后 gear.locks 里的临时锁解除，
+ *     但勾选保留，下次变更会再次消耗秘钥。
+ */
+function wantOf(gear, si) {
+  return gear.want ? gear.want[si] : undefined
+}
+
+function canCheckLock(gear, si, type) {
+  if (won.value) return false
+  // 空栏位没有词条，不能上锁
+  if (gear.slots[si].effect === 'wd') return false
+  // 已被石头锁定：只能点「解锁」，不能勾选
+  if (gear.locks[si]) return false
+  // 已勾选（任一类型）：允许取消，或改成另一种锁
+  if (wantOf(gear, si)) return true
+  // 每件装备最多同时锁 2 栏（含已勾选的）
+  const plan = lockPlan(gear)
+  return lockCount(gear) + plan.stone.length + plan.key.length < 2
+}
+
+function setLockWant(gi, si, type, checked) {
+  const gear = gears.value[gi]
+  if (!gear.want) gear.want = {}
+  if (checked) {
+    if (!canCheckLock(gear, si, type)) return
+    // 石头锁 / 秘钥锁互斥：直接覆盖
+    gear.want[si] = type
+  } else if (gear.want[si] === type) {
+    delete gear.want[si]
+  }
+}
+
+/**
+ * 本次变更的上锁计划（只用于预览与计价，不消耗资源）。
+ *
+ * 顺序与洗练时一致：已有的永久石头锁 → 勾选的石头锁 → 勾选的秘钥锁，
+ * 每把锁的价格按“上锁前已有几把锁”取 LOCK_STONE / LOCK_KEY。
+ * extra 用于预览“把某栏也勾上”时的价格。
+ */
+function lockPlan(gear, extra = null) {
+  const wantAt = si => (extra && extra.si === si ? extra.type : wantOf(gear, si))
+  const stone = []
+  const key = []
+  let n = lockCount(gear)
+  for (let si = 0; si < 3; si++) {
+    if (gear.locks[si] || gear.slots[si].effect === 'wd') continue
+    if (wantAt(si) === 'stone') {
+      stone.push({ si, index: n })
+      n++
+    }
+  }
+  for (let si = 0; si < 3; si++) {
+    if (gear.locks[si] || gear.slots[si].effect === 'wd') continue
+    if (wantAt(si) === 'key') {
+      key.push({ si, index: n })
+      n++
+    }
+  }
+  return { stone, key, finalCount: n }
+}
+
+// 变更按钮上的石头数：按“本次将要锁定的栏数”计价
+function washCost(gear) {
+  return WASH_STONE[Math.min(lockPlan(gear).finalCount, WASH_STONE.length - 1)]
+}
+
+// 勾选框上的价格：把它当作已勾选来算，与洗练时的扣费顺序一致
+// （若本栏勾的是另一种锁，这里算的就是“改成这种锁”的价格；不可勾选时不显示）
+function lockCost(gear, si, type) {
+  if (!canCheckLock(gear, si, type)) return null
+  const plan = lockPlan(gear, { si, type })
+  const item = (type === 'stone' ? plan.stone : plan.key).find(p => p.si === si)
+  if (!item || item.index >= LOCK_STONE.length) return null
+  return type === 'stone' ? LOCK_STONE[item.index] : LOCK_KEY[item.index]
+}
+
+// 本次变更前会先上哪些锁（提示用）
+function plannedLockText(gear) {
+  const plan = lockPlan(gear)
+  const parts = []
+  for (const p of plan.stone) parts.push(`栏位${p.si + 1} 石头锁（${LOCK_STONE[p.index]} 石）`)
+  for (const p of plan.key) parts.push(`栏位${p.si + 1} 秘钥锁（${LOCK_KEY[p.index]} 钥）`)
+  return parts.length ? '本次变更将先上锁：' + parts.join('、') : ''
+}
+
+function canWashSz(gear) {
+  return gear.slots.some((s, si) => !gear.locks[si] && !wantOf(gear, si) && s.effect !== 'wd')
+}
+
+function unlockSlot(gi, si) {
+  const gear = gears.value[gi]
+  if (gear.locks[si] === 'stone') {
+    delete gear.locks[si]
+  }
+}
+
+let washAudio = null
+
+function playWashSound() {
+  if (!soundEnabled.value) return
+  try {
+    if (!washAudio) {
+      washAudio = new Audio('./effect.mp3')
+      washAudio.preload = 'auto'
+    }
+    washAudio.currentTime = 0
+    washAudio.play().catch(() => {})
+  } catch (e) {
+    // 音频不可用时静默忽略
+  }
+}
+
+function startWash(gi, type) {
+  if (won.value) return
+  playWashSound()
+  const gear = gears.value[gi]
+
+  // 勾选的锁在这一刻才真正扣费上锁：石头锁优先，然后才是秘钥锁
+  const plan = lockPlan(gear)
+  let lockStone = 0
+  let lockKey = 0
+  for (const p of plan.stone) {
+    lockStone += LOCK_STONE[p.index]
+    stonesUsed.value += LOCK_STONE[p.index]
+    gear.locks[p.si] = 'stone'
+    delete gear.want[p.si]
+  }
+  for (const p of plan.key) {
+    lockKey += LOCK_KEY[p.index]
+    keysUsed.value += LOCK_KEY[p.index]
+    gear.locks[p.si] = 'key'
+    // 秘钥锁勾选保留：洗练后勾选不变，下次变更会再次消耗秘钥
+  }
+
+  const cost = WASH_STONE[Math.min(plan.finalCount, WASH_STONE.length - 1)]
+  stonesUsed.value += cost
+
+  // 空装备（三个栏位均为空）：首次改造只能应用，且固定获得 11 阶词条
+  const emptyGear = type === 'xg' && gear.slots.every(s => s.effect === 'wd')
+
+  const oldSlots = gear.slots.map(s => ({ ...s }))
+  const newSlots = oldSlots.map(s => ({ ...s }))
+  if (type === 'sz') {
+    // 变更数值：只重新随机已有词条的阶数，词条效果不变
+    for (let si = 0; si < 3; si++) {
+      if (gear.locks[si]) continue
+      if (newSlots[si].effect !== 'wd') {
+        // 国际服版：抽到与原数值相同则重抽一次（不再抽到原数值）
+        newSlots[si].tier = isGlobalRule.value
+          ? randomTierAvoidSame(gear.slots[si].tier)
+          : randomTier()
+      }
+    }
+  } else {
+    // 变更效果：重新随机效果与阶数（按栏位获得概率，效果不重复）
+    const keptEffects = []
+    for (let si = 0; si < 3; si++) {
+      if (gear.locks[si]) keptEffects.push(gear.slots[si].effect)
+    }
+    for (let si = 0; si < 3; si++) {
+      if (gear.locks[si]) continue
+      // 先判定本栏是否获得词条（与规则版本无关）
+      if (Math.random() < SLOT_GET[si]) {
+        const prev = gear.slots[si]
+        // 本次已分配的新词条与锁定栏位的词条不重复；
+        // 本栏原有的词条仍可再被抽到（国际服版新规则，国服版同样如此）。
+        const effect = randomEffect(keptEffects)
+        let tier
+        if (emptyGear) {
+          // 空装备首次改造：本次获得的全部词条阶数固定为 11
+          tier = 11
+        } else if (isGlobalRule.value && prev.effect !== 'wd') {
+          // 国际服版新规则：只有效果与数值都与改造前完全相同时，
+          // 才重抽一次数值（且保证不会再抽到原数值）
+          const t = randomTier()
+          tier = effect === prev.effect && t === prev.tier
+            ? randomTierExcept(prev.tier)
+            : t
+        } else {
+          tier = randomTier()
+        }
+        newSlots[si] = { effect, tier }
+        keptEffects.push(effect)
+      } else {
+        newSlots[si] = { effect: 'wd', tier: 0 }
+      }
+    }
+  }
+
+  const rows = oldSlots.map((old, si) => ({
+    slot: si,
+    old,
+    new: newSlots[si],
+    changed: old.effect !== newSlots[si].effect || old.tier !== newSlots[si].tier,
+  }))
+
+  pendingWash.value = {
+    gearIndex: gi,
+    type,
+    rows,
+    cost,
+    lockStone,
+    lockKey,
+    forceApply: emptyGear,
+    keyLocks: Object.keys(gear.locks).filter(si => gear.locks[si] === 'key').map(Number),
+  }
+  dialogVisible.value = true
+}
+
+/**
+ * 「保留并再次变更」：
+ * 先按「效果保留」结算本次结果（不改词条、解除一次性秘钥锁、勾选保留），
+ * 再立刻用同样的设置重新洗一次（石头 / 秘钥照常消耗）。
+ */
+function keepAndWashAgain() {
+  const w = pendingWash.value
+  if (!w) return
+  const gearIndex = w.gearIndex
+  const type = w.type
+  resolveWash(false)
+  startWash(gearIndex, type)
+}
+
+function resolveWash(apply) {
+  const w = pendingWash.value
+  if (!w) return
+  // 空装备首次改造只能应用
+  if (w.forceApply) apply = true
+  const gear = gears.value[w.gearIndex]
+  if (apply) {
+    gear.slots = w.rows.map(r => ({ ...r.new }))
+  }
+  // 秘钥锁为一次性：无论保留还是变更，本轮洗练后都解除
+  for (const si of w.keyLocks) {
+    delete gear.locks[si]
+  }
+  dialogVisible.value = false
+  pendingWash.value = null
+  checkWin()
+}
+
+/* ==================== 初始期望计算 ==================== */
+
+function slotText(slot) {
+  if (slot.effect === 'wd') return '未获取效果'
+  return EFFECT_NAMES[slot.effect] + TIER_VALUES[slot.effect][slot.tier - 1] + '（阶数' + slot.tier + '）'
+}
+
+function tierClass(tier) {
+  if (tier >= 15) return 'tier-15'
+  if (tier >= 12) return 'tier-12'
+  return ''
+}
+
+function buildCurrent() {
+  const gearStr = g =>
+    g.slots.map((s, si) => (g.locks && g.locks[si] === 'stone' ? '1' : '0') + s.effect + (s.effect === 'wd' ? 0 : s.tier)).join(',')
+  return gears.value.map(gearStr).join('/')
+}
+
+function ensureWorker() {
+  if (worker) return worker
+  worker = new AffixWorker()
+  worker.onmessage = e => {
+    const msg = e.data
+    // 进度消息不是最终结果，忽略（角色版会先发多条进度）
+    if (msg && msg.progress) {
+      if (pendingReqs.has(msg.id)) expectProgress.value = formatProgress(msg.progress)
+      return
+    }
+    const p = pendingReqs.get(msg.id)
+    if (!p) return
+    pendingReqs.delete(msg.id)
+    if (msg.ok) p.resolve(msg.result)
+    else p.reject(new Error(msg.error))
+  }
+  worker.onerror = e => {
+    for (const p of pendingReqs.values()) p.reject(new Error('计算进程异常：' + (e.message || '未知错误')))
+    pendingReqs.clear()
+    worker.terminate()
+    worker = null
+  }
+  return worker
+}
+
+function formatProgress(info) {
+  if (info.phase === 'gear') return `正在求解装备${info.gear}/${info.total}…`
+  return JSON.stringify(info)
+}
+
+function computeExpectation(current, targetStr) {
+  const id = ++reqId
+  latestReqId = id
+  const promise = new Promise((resolve, reject) => {
+    pendingReqs.set(id, { resolve, reject })
+    ensureWorker().postMessage({
+      id,
+      type: mode.value,
+      current,
+      target: targetStr,
+      // 期望计算跟随规则版本开关（p 用默认 0.1、角色版用精确策略）
+      options: { ruleVersion: props.ruleVersion },
+    })
+  })
+  return { id, promise }
+}
+
+async function beginGame(gearList, targetList) {
+  started.value = true
+  won.value = false
+  showExpectation.value = false
+  expectation.value = null
+  expectError.value = ''
+  expectProgress.value = ''
+  stonesUsed.value = 0
+  keysUsed.value = 0
+  pendingWash.value = null
+  dialogVisible.value = false
+
+  gears.value = gearList
+  targets.value = targetList
+
+  const current = buildCurrent()
+  const targetStr = targets.value.map(t => t.effects.join('') + t.tier).join(',')
+  expectLoading.value = true
+  const { id, promise } = computeExpectation(current, targetStr)
+  try {
+    const res = await promise
+    // 只接受当前这局的结果，避免退出后旧请求迟到覆盖新期望
+    if (id === latestReqId) expectation.value = res
+  } catch (e) {
+    if (id === latestReqId) {
+      expectError.value = e && e.message ? e.message : String(e)
+    }
+  } finally {
+    if (id === latestReqId) expectLoading.value = false
+  }
+
+  checkWin()
+}
+
+async function startSimulation() {
+  const gearCount = mode.value === 'single' ? 1 : 4
+  let g = Array.from({ length: gearCount }, () => generateGear())
+  let t = mode.value === 'single'
+    ? generateTargets(3, 15)
+    : generateTargets(5, 60)
+
+  // 避免一开始就达标（重试几次）；角色目标可行性随机生成已保证，这里再兜底一次
+  for (let i = 0; i < 20 && goalMetFor(g, t); i++) {
+    g = Array.from({ length: gearCount }, () => generateGear())
+    t = mode.value === 'single'
+      ? generateTargets(3, 15)
+      : generateTargets(5, 60)
+  }
+  if (mode.value === 'character' && !isCharacterTargetFeasible(t)) {
+    t = generateTargets(5, 60)
+  }
+  await beginGame(g, t)
+}
+
+function restartGame() {
+  if (simMode.value === 'custom') startCustomSimulation()
+  else startSimulation()
+}
+
+function startCustomSimulation() {
+  const err = validateCustom()
+  if (err) {
+    customError.value = err
+    return
+  }
+  customError.value = ''
+  const gearList = mode.value === 'single'
+    ? [cloneCustomGear(customSingleGear.value)]
+    : customCharGears.value.map(cloneCustomGear)
+  const targetList = customTargets.value.filter(t => t.effects && t.effects.length).map(t => ({ effects: [...t.effects], tier: t.tier }))
+  beginGame(gearList, targetList)
+}
+
+function exitGame() {
+  started.value = false
+  won.value = false
+  showExpectation.value = false
+  expectation.value = null
+  expectError.value = ''
+  expectProgress.value = ''
+  stonesUsed.value = 0
+  keysUsed.value = 0
+  gears.value = []
+  targets.value = []
+  pendingWash.value = null
+  dialogVisible.value = false
+}
+
+// 从阿卡加载：由父组件（计算器页）在读取阿卡数据后调用
+function applyAkaCharacter(gears) {
+  exitGame()
+  mode.value = 'character'
+  customCharGears.value = gears.map(g => ({ slots: g.slots.map(s => ({ ...s })), locks: {}, want: {} }))
+  customTargets.value = [blankTarget(44)]
+  simMode.value = 'custom'
+  customError.value = ''
+}
+
+function applyAkaGear(gear, slotNo) {
+  exitGame()
+  mode.value = 'single'
+  customSingleGear.value = { slots: gear.slots.map(s => ({ ...s })), locks: {}, want: {} }
+  customTargets.value = [blankTarget(13)]
+  simMode.value = 'custom'
+  customError.value = ''
+}
+
+defineExpose({ applyAkaCharacter, applyAkaGear })
+
+/* ==================== 展示 ==================== */
+
+const expectParts = computed(() => {
+  const s = String(expectation.value?.cost || '')
+  const m = s.match(/^([\d.]+)\/([\d.]+)-([\d.]+)$/)
+  if (!m) return null
+  return { allStone: parseFloat(m[1]), keyStone: parseFloat(m[2]), keys: parseFloat(m[3]) }
+})
+
+const allStone = computed(() => expectParts.value?.allStone ?? NaN)
+const keyStone = computed(() => expectParts.value?.keyStone ?? NaN)
+const keys = computed(() => expectParts.value?.keys ?? NaN)
+
+function fmtNum(x) {
+  if (!Number.isFinite(x)) return '-'
+  if (Math.abs(x - Math.round(x)) < 1e-9) return String(Math.round(x))
+  return x.toFixed(2).replace(/0+$/, '').replace(/\.$/, '')
+}
+
+function diffClass(x) {
+  if (!Number.isFinite(x)) return ''
+  return x <= 0 ? 'diff-good' : 'diff-bad'
+}
+
+watch(mode, () => {
+  customTargets.value = [blankTarget(mode.value === 'character' ? 44 : 13)]
+  customError.value = ''
+})
+
+watch(simMode, () => {
+  customTargets.value = [blankTarget(mode.value === 'character' ? 44 : 13)]
+  customError.value = ''
+})
+
+onUnmounted(() => {
+  if (worker) {
+    worker.terminate()
+    worker = null
+  }
+})
+</script>
+
+<style scoped>
+.simulator {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.sim-controls {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.panel {
+  background: rgba(255, 255, 255, 0.92);
+  border-radius: 10px;
+  padding: 16px 18px;
+}
+
+.panel-title {
+  margin: 0 0 10px;
+  font-size: 17px;
+  color: #1fa2ff;
+}
+
+.panel-note {
+  margin: 0 0 14px;
+  color: #666;
+  font-size: 13px;
+}
+
+.custom-target-title {
+  margin-top: 18px;
+}
+
+.slot-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.add-row {
+  margin-top: 12px;
+}
+
+.rule-note {
+  margin-top: 12px;
+  padding: 10px 12px;
+  background: #fff7e6;
+  border-left: 4px solid #ffb800;
+  border-radius: 6px;
+  color: #8a6100;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.custom-error {
+  margin-top: 12px;
+  text-align: center;
+  color: #f56c6c;
+  font-weight: bold;
+}
+
+.compare-actions {
+  margin-top: 24px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.target-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.target-chip {
+  background: #eef6ff;
+  border: 1px solid #cfe4fb;
+  color: #1f6fc4;
+  border-radius: 16px;
+  padding: 4px 14px;
+  font-weight: bold;
+}
+
+.sim-stats {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  flex-wrap: wrap;
+}
+
+.stat {
+  color: #555;
+}
+
+.stat-num {
+  color: #1fa2ff;
+  font-size: 17px;
+}
+
+.gear-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.gear-grid.single {
+  grid-template-columns: 1fr;
+}
+
+.gear-card {
+  background: #f7faff;
+  border: 1px solid #e3ecf7;
+  border-radius: 10px;
+  padding: 14px;
+}
+
+.gear-title {
+  margin: 0 0 12px;
+  font-size: 16px;
+  color: #3553ff;
+}
+
+.slot-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 6px 0;
+  border-bottom: 1px dashed #e3ecf7;
+}
+
+.slot-label {
+  min-width: 46px;
+  font-weight: bold;
+  color: #666;
+  font-size: 13px;
+}
+
+.slot-affix {
+  min-width: 150px;
+  color: #222;
+  font-weight: 600;
+}
+
+.slot-affix.empty {
+  color: #aaa;
+  font-weight: normal;
+}
+
+.slot-actions {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+  flex-wrap: wrap;
+}
+
+.lock-tag {
+  font-size: 12px;
+  border-radius: 4px;
+  padding: 1px 8px;
+  color: #fff;
+}
+
+.lock-tag.stone {
+  background: #909399;
+}
+
+.lock-tag.key {
+  background: #e6a23c;
+}
+
+.wash-area {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.wash-hint {
+  color: #999;
+  font-size: 12px;
+}
+
+.lock-plan-hint {
+  color: #e6a23c;
+  width: 100%;
+}
+
+.wash-again-row {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+.btn-again {
+  background: #fff;
+  border-color: #e6a23c;
+  color: #e6a23c;
+}
+
+.btn-again:hover,
+.btn-again:focus {
+  background: #fdf3e5;
+  border-color: #e6a23c;
+  color: #e6a23c;
+}
+
+.goal-note p {
+  margin: 0;
+  color: #777;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.dialog-note {
+  margin: 0 0 10px;
+  color: #777;
+  font-size: 13px;
+}
+
+.wash-blocks {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.wash-block {
+  border-radius: 12px;
+  border: 1px solid;
+  padding: 12px 18px;
+}
+
+.old-block {
+  border-color: rgba(230, 162, 60, 0.7);
+  box-shadow:
+    0 0 16px rgba(230, 162, 60, 0.45),
+    inset 0 0 12px rgba(230, 162, 60, 0.08);
+}
+
+.new-block {
+  border-color: rgba(31, 162, 255, 0.7);
+  box-shadow:
+    0 0 16px rgba(31, 162, 255, 0.45),
+    inset 0 0 12px rgba(31, 162, 255, 0.08);
+}
+
+.wash-block-title {
+  text-align: center;
+  font-weight: bold;
+  font-size: 15px;
+  margin-bottom: 8px;
+}
+
+.old-block .wash-block-title {
+  color: #e6a23c;
+}
+
+.new-block .wash-block-title {
+  color: #1fa2ff;
+}
+
+.wash-block-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.wash-block-item {
+  text-align: center;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.75);
+  color: #222;
+  font-weight: 600;
+}
+
+.wash-swap {
+  text-align: center;
+  color: #909399;
+  font-size: 20px;
+  line-height: 1;
+  padding: 2px 0;
+}
+
+.wash-footer {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.wash-note {
+  width: 100%;
+  text-align: center;
+  margin: 10px 0 0 !important;
+}
+
+.btn-keep {
+  background: #e6a23c;
+  border-color: #e6a23c;
+  color: #fff;
+}
+
+.btn-keep:hover,
+.btn-keep:focus {
+  background: #ebb563;
+  border-color: #ebb563;
+  color: #fff;
+}
+
+.btn-apply {
+  background: #1fa2ff;
+  border-color: #1fa2ff;
+  color: #fff;
+}
+
+.btn-apply:hover,
+.btn-apply:focus {
+  background: #54b8ff;
+  border-color: #54b8ff;
+  color: #fff;
+}
+
+/* 阶数样式：12-14 阶蓝色，15 阶黑底蓝字 */
+.tier-12 {
+  color: #1fa2ff;
+  font-weight: 700;
+}
+
+.tier-15 {
+  background: #000;
+  color: #1fa2ff;
+  font-weight: 700;
+  padding: 0 5px;
+  border-radius: 4px;
+}
+
+.result-panel {
+  border: 1px solid #e3ecf7;
+}
+
+.expect-box {
+  line-height: 2;
+}
+
+.expect-row {
+  color: #444;
+}
+
+.expect-row b {
+  color: #1fa2ff;
+}
+
+.expect-divider {
+  border-top: 1px dashed #e3ecf7;
+  margin: 6px 0;
+}
+
+.diff-good {
+  color: #67c23a !important;
+}
+
+.diff-bad {
+  color: #f56c6c !important;
+}
+
+.expect-error {
+  color: #f56c6c;
+}
+
+.expect-rule-note {
+  margin-top: 8px;
+}
+
+.expect-loading {
+  color: #909399;
+}
+
+.again-area {
+  margin-top: 12px;
+}
+
+@media (max-width: 768px) {
+  .gear-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .slot-actions {
+    margin-left: 0;
+    width: 100%;
+  }
+}
+</style>

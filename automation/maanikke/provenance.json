@@ -1,0 +1,83 @@
+{
+  "repository": "https://github.com/Shinarin/MaaNikke",
+  "commit": "eab10c90ba1f3502bf9576a6669d0f83e27bbc1e",
+  "license": "GPL-3.0",
+  "files": [
+    {
+      "source": "LICENSE",
+      "destination": "vendor/LICENSE",
+      "sha256": "230184f60bae2feaf244f10a8bac053c8ff33a183bcc365b4d8b876d2b7f4809"
+    },
+    {
+      "source": "README.md",
+      "destination": "vendor/README.md",
+      "sha256": "9268947887bf7a17c9323b3b8e49819a60e5ffe159be58c4cad88ac5eefd202f"
+    },
+    {
+      "source": "DEVELOPMENT.md",
+      "destination": "vendor/DEVELOPMENT.md",
+      "sha256": "de56e8593361c7969382d07c01be0e725fca457099e8aeb5cddfb52209a7e75f"
+    },
+    {
+      "source": "interface.json",
+      "destination": "vendor/interface.json",
+      "sha256": "827f977476bd5e3bbd6eaada11c8f8f4d97f5e25608d562c29ae191060547be2"
+    },
+    {
+      "source": "resource/base/pipeline/task/startgame.json",
+      "destination": "vendor/pipeline/startgame.json",
+      "sha256": "d107a1d60fc28216d53a5e86f65a62da86481a84d5a6547c673551c45229fff3"
+    },
+    {
+      "source": "resource/base/pipeline/task/inquiryandgift.json",
+      "destination": "vendor/pipeline/inquiryandgift.json",
+      "sha256": "9fbfb64db86f35971da199a377bb5642906319cf63bf16783b91545d97d2d75b"
+    },
+    {
+      "source": "resource/base/image/lianmeng.png",
+      "destination": "resource/image/lianmeng.png",
+      "sha256": "27ebea981c9f01d0b87b9954ef9023cbb75510e9b6e887e78084cecf9e882a8e"
+    },
+    {
+      "source": "resource/base/image/dailyrewards/task.png",
+      "destination": "resource/image/dailyrewards/task.png",
+      "sha256": "274c02e849f6e7a62a40cd9e6762f5693c492698ce7b2c2f2afb59f597fe78d4"
+    },
+    {
+      "source": "resource/base/image/inquiryandgift/intonikkes.png",
+      "destination": "resource/image/inquiryandgift/intonikkes.png",
+      "sha256": "71b7c4f347846677f70b4d6ef21c5143382b59d4366d1e83242cd6227de6a9ea"
+    },
+    {
+      "source": "resource/base/model/ocr/det.onnx",
+      "destination": "resource/model/ocr/det.onnx",
+      "sha256": "66c0f34caaf432553710fd9973a7134d8cf924db7109310c3d2562dcc39b209d"
+    },
+    {
+      "source": "resource/base/model/ocr/keys.txt",
+      "destination": "resource/model/ocr/keys.txt",
+      "sha256": "769e7fa79bb297b5f18d8dbd149e364a45bc61f2b3f574e5ea836f0b261c23a6"
+    },
+    {
+      "source": "resource/base/model/ocr/README.md",
+      "destination": "resource/model/ocr/README.md",
+      "sha256": "2a488a89e06250dde66f7323954a6ea39b5bfce246de80e878021f47f2dc51d8"
+    },
+    {
+      "source": "resource/base/model/ocr/rec.onnx",
+      "destination": "resource/model/ocr/rec.onnx",
+      "sha256": "7dcf6298d77d2a6eb44c1ebeed990826ca895a9c68d955a3eace00763d052949"
+    },
+    {
+      "source": "agent/utils/params.py",
+      "destination": "agent/utils/params.py",
+      "sha256": "00f917233d606fc057b7dfef5dd856e6a26f61e2978ee23e0aa268b213e65b15"
+    },
+    {
+      "source": "agent/custom/reco/my_reco.py",
+      "destination": "agent/rotated_ocr.py",
+      "transformation": "Extract RotatedOCR class and required imports; no algorithm change",
+      "sourceSha256": "dd84b366cccc7de0f6700460bd4a385b1fd6726a160b12e9de2a3f0c0aa528ac"
+    }
+  ]
+}

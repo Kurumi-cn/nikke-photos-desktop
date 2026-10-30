@@ -1,0 +1,124 @@
+/**
+ * 洗词条策略计算 Worker
+ *
+ * 把耗时的 MDP 求解放到 Web Worker 中执行，避免阻塞页面。
+ *
+ * 加载方式说明：
+ * Vite dev（rolldown）不会把 src 下的 CommonJS 源文件转换成 ESM，
+ * 直接 import 会因 module/require 未定义而报错。因此这里用 `?raw` 在构建期
+ * 把算法源码作为字符串内联进来，再在函数作用域内以 module/require 垫片求值
+ * （两个算法文件只在末尾使用 module.exports，且只有 affix_solver 的 CLI
+ * 测试块用到 require.main），且不改动算法文件本身。
+ *
+ * 用 `?raw` 而非运行时 fetch 的原因：
+ * 1) 内联 Worker（Blob）里没有可用的 import.meta.url，无法解析外部文件；
+ * 2) 双击打开 html（file://）时浏览器禁止 fetch 本地文件。
+ * 这样 Worker 完全自包含，构建产物不再依赖额外的算法文件。
+ *
+ * 消息协议（主线程 -> Worker）：
+ *   { id, type: 'single' | 'character', current, target, options? }
+ * 回复：
+ *   { id, ok: true, result }          计算完成
+ *   { id, ok: true, progress: info }  进度回调（仅角色版）
+ *   { id, ok: false, error }          计算失败
+ */
+
+import solverSource from '../affix_solver.js?raw'
+import charSolverSource from '../affix_4gear_solver.js?raw'
+
+// 模块名 -> 源码（构建期内联）
+const SOURCES = {
+  'affix_solver.js': solverSource,
+  'affix_4gear_solver.js': charSolverSource,
+}
+
+let solversPromise = null
+
+const moduleCache = new Map()
+
+/**
+ * 获取一段 CommonJS 源码，并在垫片作用域内求值，返回 module.exports。
+ * @param {string} name 模块文件名（如 'affix_solver.js'）
+ */
+function loadCjsModule(name) {
+  if (moduleCache.has(name)) return moduleCache.get(name)
+  const promise = (async () => {
+    const code = SOURCES[name]
+    if (code == null) throw new Error('未知算法模块：' + name)
+    const module = { exports: {} }
+    const requireShim = (id) => loadCjsModule(String(id).replace(/^\.\//, ''))
+    requireShim.main = undefined
+    const factory = new Function('module', 'exports', 'require', code)
+    factory(module, module.exports, requireShim)
+    return module.exports
+  })()
+  moduleCache.set(name, promise)
+  return promise
+}
+
+function ensureSolvers() {
+  if (!solversPromise) {
+    solversPromise = Promise.all([
+      loadCjsModule('affix_solver.js'),
+      loadCjsModule('affix_4gear_solver.js'),
+    ]).then(([solverMod, charSolverMod]) => ({
+      solve: solverMod.solve,
+      solveCharacter: charSolverMod.solveCharacter,
+    }))
+  }
+  return solversPromise
+}
+
+self.onmessage = (e) => {
+  const { id, type, current, target, options } = e.data || {}
+  // 洗练规则版本：'cn' = 国服版（默认）；'global' = 国际服版
+  const ruleVersion = options?.ruleVersion === 'global' ? 'global' : 'cn'
+
+  ensureSolvers()
+    .then(({ solve, solveCharacter }) => {
+      try {
+        if (type === 'single') {
+          const result = solve(current, target, {
+            epsilon: 1e-9,
+            maxIterations: 10000,
+            digits: 6,
+            ruleVersion,
+            // 秘钥使用概率阈值 p（0~1，默认 0.1）
+            p: typeof options?.p === 'number' ? options.p : 0.1,
+          })
+          self.postMessage({ id, ok: true, result })
+        } else if (type === 'character') {
+          const result = solveCharacter(current, target, {
+            epsilon: 1e-9,
+            maxGlobalStates: options?.maxGlobalStates ?? 500000,
+            maxTransitionsPerAction: options?.maxTransitionsPerAction ?? 500000,
+            digits: 6,
+            ruleVersion,
+            p: typeof options?.p === 'number' ? options.p : 0.1,
+            // 是否启用“更精确策略计算”（改进分配候选对比，更慢）
+            usePrecise: options?.usePrecise !== false,
+            solve,
+            onProgress(info) {
+              self.postMessage({ id, ok: true, progress: info })
+            },
+          })
+          self.postMessage({ id, ok: true, result })
+        } else {
+          self.postMessage({ id, ok: false, error: '未知计算类型: ' + type })
+        }
+      } catch (err) {
+        self.postMessage({
+          id,
+          ok: false,
+          error: err && err.message ? err.message : String(err),
+        })
+      }
+    })
+    .catch((err) => {
+      self.postMessage({
+        id,
+        ok: false,
+        error: '算法加载失败：' + (err && err.message ? err.message : String(err)),
+      })
+    })
+}

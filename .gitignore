@@ -1,0 +1,20 @@
+node_modules/
+dist/
+release/
+/data/
+*.log
+public/tools/core-dust/
+public/about/
+public/tools/equipment-reroll/
+tools/equipment-reroll/public/source/
+
+.env
+.env.*
+!.env.example
+.npmrc
+__pycache__/
+*.pyc
+.venv/
+runtime/
+codex temp/
+build/installed-files.nsh

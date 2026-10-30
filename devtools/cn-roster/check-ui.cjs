@@ -1,0 +1,68 @@
+const { app, BrowserWindow, protocol, net } = require('electron');
+const fs = require('node:fs'), path = require('node:path'), assert = require('node:assert/strict'), { pathToFileURL } = require('node:url');
+const root = process.env.NIKKE_FILTER_CHECK_PROJECT || path.resolve(__dirname, '../..'), cache = process.env.NIKKE_FILTER_CHECK_CACHE || path.resolve(root, '../codex temp/nikke-desktop/cn-roster-check');
+fs.mkdirSync(cache, { recursive: true });
+app.setPath('userData', path.join(cache, 'data'));
+app.setPath('sessionData', path.join(cache, 'session'));
+app.commandLine.appendSwitch('disk-cache-dir', path.join(cache, 'chromium'));
+protocol.registerSchemesAsPrivileged([{ scheme: 'nikke', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } }]);
+const delay = ms => new Promise(r => setTimeout(r, ms));
+app.whenReady().then(async () => {
+  protocol.handle('nikke', req => {
+    const u = new URL(req.url), base = u.host === 'app' ? path.join(root, 'dist') : path.join(root, 'dist/tools');
+    const file = path.resolve(base, '.' + (u.pathname === '/' ? '/index.html' : decodeURIComponent(u.pathname)));
+    if (!file.startsWith(base + path.sep) || !fs.existsSync(file)) return new Response('', { status: 404 });
+    return net.fetch(pathToFileURL(file).href);
+  });
+  const win = new BrowserWindow({ width: 1440, height: 1000, show: false, webPreferences: { contextIsolation: true, sandbox: true, backgroundThrottling: false, offscreen: true } });
+  const web = win.webContents, run = s => web.executeJavaScript(s), report = {};
+  const until = async (s, name) => { for (let i = 0; i < 150; i++) { if (await run(s)) return; await delay(80); } throw Error('Timeout: ' + name); };
+  web.on('console-message', (_e, ...args) => fs.appendFileSync(path.join(cache, 'console.log'), args.join(' ') + '\n'));
+  await win.loadURL('nikke://app/');
+  await until("!!document.querySelector('.topbar')", 'app');
+  await run("localStorage.clear();sessionStorage.clear();localStorage.setItem('nikke-photos:roster-scope:v1','cn'); location.reload()"); await delay(500);
+  await until("!!document.querySelector('.topbar')", 'reload');
+  const roster = require(path.join(root,'src/data/roster.json')).characters, cnCodes = require(path.join(root,'src/data/cn-roster.json')).nameCodes;
+  const inside = roster.find(c => cnCodes.includes(c.nameCode)), outside = roster.find(c => !cnCodes.includes(c.nameCode));
+  const route = async hash => { await run(`location.hash=${JSON.stringify(hash)}`); await delay(220); };
+  assert.equal(await run("Number(document.querySelector('.page-head .count strong').textContent)"), roster.length);
+  assert.equal(await run("!!document.querySelector('.roster-scope-bar')"),false);
+  await run("document.querySelector('.toolbar .switch').click()");await delay(80);
+  assert.equal(await run("Number(document.querySelector('.page-head .count strong').textContent)"),cnCodes.length);
+  await route('/data');
+  assert.equal(await run("document.querySelectorAll('.data-list .data-item').length"),roster.length);
+  await run("document.querySelector('.data-cn-filter .switch').click()");await delay(80);
+  assert.equal(await run("document.querySelectorAll('.data-list .data-item').length"),cnCodes.length);
+  assert.equal(await run("document.querySelector('.data-cn-filter .switch').getAttribute('aria-pressed')"),'true');
+  await delay(500);
+  fs.writeFileSync(path.join(cache,'data-local-cn.png'),(await web.capturePage()).toPNG());
+  report.noGlobalSwitchAndLocalDataFilter=true;
+  await run("document.querySelector('.data-cn-filter .switch').click()");await delay(80);
+  await route('/data?code='+outside.nameCode);
+  await until("document.querySelectorAll('.equip-head .mini-btn').length===4",'equipment outside');
+  assert.equal(await run("[...document.querySelectorAll('.equip-head .mini-btn')].every(b=>b.disabled)"),true);
+  await route('/data?code='+inside.nameCode);
+  assert.equal(await run("[...document.querySelectorAll('.equip-head .mini-btn')].every(b=>!b.disabled)"),true);
+  report.ocrStillOnlyCn=true;
+  const stamp=new Date().toISOString(),complete={equipments:Array.from({length:4},()=>[{functionType:'StatAtk',level:1,value:4.77}]),updatedAt:stamp};
+  const dataKey='nikke-photos/profiles/v1/data/default',records={[inside.nameCode]:complete,[outside.nameCode]:complete};
+  await run(`localStorage.setItem(${JSON.stringify(dataKey)},${JSON.stringify(JSON.stringify({version:2,characters:records,updatedAt:stamp}))});sessionStorage.setItem('nikke-photos/stats/selection/v1',${JSON.stringify(JSON.stringify([outside.nameCode,inside.nameCode]))})`);
+  web.reload();await delay(400);await until("!!document.querySelector('.topbar')",'seed reload');
+  const rawBefore=await run(`localStorage.getItem(${JSON.stringify(dataKey)})`);
+  await route('/stats');assert.equal(await run("document.querySelectorAll('.st-row').length"),2);
+  await route('/tools');await until("!!document.querySelector('#tab-equipment-reroll')",'tool tab');await run("document.querySelector('#tab-equipment-reroll').click()");
+  let frame;
+  for(let i=0;i<150;i++){frame=web.mainFrame.frames.find(f=>f.url.startsWith('nikke://reroll/equipment-reroll/index.html'));if(frame)break;await delay(60)}
+  assert.ok(frame);const tool=s=>frame.executeJavaScript(s);
+  for(let i=0;i<150;i++){if(await tool("!!document.querySelector('.expectation-outline')"))break;await delay(60)}
+  await tool("document.querySelector('#collection-select').value='manual-four-equipment';document.querySelector('#collection-select').dispatchEvent(new Event('change',{bubbles:true}))");
+  await tool("document.querySelector('#import-completed-character').click()");await until("!!document.querySelector('.reroll-import-dialog[open]')",'picker');
+  assert.equal(await run("document.querySelectorAll('.reroll-import-option').length"),2);await run("document.querySelector('.reroll-import-dialog .dlg-x').click()");
+  assert.equal(await run(`localStorage.getItem(${JSON.stringify(dataKey)})`),rawBefore);
+  report.statsAndToolUnaffectedByPageFilters=true;
+  for(const hash of ['/','/data','/stats','/tools','/my']){await route(hash);assert.equal(await run("!!document.querySelector('.roster-scope-bar')"),false)}
+  report.allRoutesNoGlobalBar=true;
+  fs.writeFileSync(path.join(cache,'ui-result.json'),JSON.stringify(report,null,2));
+  app.exit(0);
+}).catch(error => { fs.writeFileSync(path.join(cache, 'ui-error.txt'), error.stack); app.exit(1); });
+setTimeout(() => app.exit(2), 60000).unref();
