@@ -20,7 +20,7 @@ function createAdminNavigation({project,cacheRoot,run=execute,screenshotStore=nu
    target:{hwnd:target.hwnd,pid:target.pid},authorization:'User-triggered single enter-Nikke navigation experiment; human approves Windows UAC'},null,2));
   log(occludedTest?'等待本人确认UAC；通过后保持游戏未最小化，可由其他软件遮挡，15秒后检查并仅点击一次':'等待本人确认UAC；通过后请切回游戏，8秒后检查两帧并仅请求一次点击');
   try{
-   const {stdout}=await run('powershell.exe',['-NoProfile','-NonInteractive','-File',path.join(project,'desktop-scripts/request-maanikke-admin.ps1'),'-ProjectRoot',project,'-CacheRoot',path.dirname(base),'-RequestFile',file],
+   const {stdout}=await run('powershell.exe',['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',path.join(project,'desktop-scripts/request-maanikke-admin.ps1'),'-ProjectRoot',project,'-CacheRoot',path.dirname(base),'-RequestFile',file],
     {windowsHide:true,timeout:180000,maxBuffer:1024*1024,encoding:'utf8'});
    const launch=JSON.parse(stdout.replace(/^\uFEFF/,''));
    if(launch.canceled){log('UAC已取消，未执行输入');return {canceled:true,passed:false,inputRequests:0,evidence:folder};}

@@ -214,7 +214,8 @@ function createCollection({project,cacheRoot,screenshots,shortcuts,launch=execut
    promise=(async()=>{
     try{
      log(job,'等待本人确认 UAC；任务只导航并读取装备');
-     const output=await launch('powershell.exe',['-NoProfile','-NonInteractive','-File',path.join(project,'desktop-scripts/request-maanikke-collection.ps1'),'-ProjectRoot',project,'-CacheRoot',cacheRoot,'-RequestFile',path.join(folder,'request.json')],{cwd:project,windowsHide:true,timeout:Math.max(1900000,nameCodes.length*185000),maxBuffer:1024*1024,encoding:'utf8'});
+     // Apply only to this launcher process; do not change user/machine policy or UAC.
+     const output=await launch('powershell.exe',['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',path.join(project,'desktop-scripts/request-maanikke-collection.ps1'),'-ProjectRoot',project,'-CacheRoot',cacheRoot,'-RequestFile',path.join(folder,'request.json')],{cwd:project,windowsHide:true,timeout:Math.max(1900000,nameCodes.length*185000),maxBuffer:1024*1024,encoding:'utf8'});
      const launchResult=JSON.parse(output.stdout.replace(/^\uFEFF/,''));
      if(launchResult.canceled){job.terminal='canceled';job.status.error='UAC已取消，未输入';}
      await job.ocrTail;

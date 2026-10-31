@@ -9,6 +9,7 @@ const shortcuts={register:(key)=>{if(registered.has(key))return false;registered
 const png=PNG.sync.write(new PNG({width:2,height:2}));
 let launched=0;
 async function launch(_exe,args){
+ assert.equal(_exe,'powershell.exe');assert.equal(args[args.indexOf('-ExecutionPolicy')+1],'Bypass');assert.ok(args.indexOf('-ExecutionPolicy')<args.indexOf('-File'));
  launched++;const file=args[args.indexOf('-RequestFile')+1],folder=path.dirname(file),request=JSON.parse(fs.readFileSync(file));let id=0;
  async function send(kind,data={},image=false){
   id++;if(image)fs.writeFileSync(path.join(folder,'spool',id+'.png'),png);

@@ -4,6 +4,7 @@ const {createAdminNavigation}=require('../electron/maanikke-admin.cjs');
 async function mocked(){
  let release,requestFile;
  const navigation=createAdminNavigation({project,run:async(_file,args)=>{
+  assert.equal(_file,'powershell.exe');assert.equal(args[args.indexOf('-ExecutionPolicy')+1],'Bypass');assert.ok(args.indexOf('-ExecutionPolicy')<args.indexOf('-File'));
   requestFile=args[args.indexOf('-RequestFile')+1];
   return new Promise(resolve=>{release=resolve});
  }});
